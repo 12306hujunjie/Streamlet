@@ -2,175 +2,170 @@
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](#测试)
 
-**AetherFlow 通过智能抽象让数据流处理回归业务本质：专注逻辑表达，框架处理执行细节。**
+**声明式数据流处理框架：用方法链表达业务逻辑，框架自动处理异步/同步混合执行、并行调度和重试。**
 
-- 🎯 **声明式工作流**：用方法链表达数据处理逻辑，代码即业务流程
-- 🤖 **智能执行引擎**：自动处理async/sync混合执行，无需手动协调
-- 🔗 **函数式组合**：@node装饰器让任何函数变成可组合节点
-- 🛡️ **企业级特性**：内置重试机制、依赖注入、基于pydantic的类型验证
-- 📊 **结果跟踪**：ParallelResult类提供详细的执行状态和错误信息
+- 🎯 **声明式工作流**：`.then()` `.fan_out_to()` `.fan_in()` `.branch_on()` `.repeat()` 方法链构建数据流
+- 🤖 **智能异步执行**：自动检测 async/sync 函数并选择正确的执行策略，无需手动协调
+- 🔗 **@node 装饰器**：任意函数变为可组合节点，内置 pydantic 类型校验和依赖注入
+- 🛡️ **重试机制**：基于异常分类的可配置指数退避重试
 
-## 🚀 快速开始
+## 快速开始
 
 ```bash
-pip install aetherflow  # 或 pdm add aetherflow
+pip install aetherflow
 ```
 
 ```python
 from aetherflow import node
 
 @node
-def double(x: int) -> int: return x * 2
+def double(x: int) -> int:
+    return x * 2
 
 @node
-def add_ten(x: int) -> int: return x + 10
+def add_ten(x: int) -> int:
+    return x + 10
 
-# 链式数据流处理 - 框架核心价值
 result = double.then(add_ten)(5)  # 20
 ```
 
-## 📖 核心概念
+## 核心 API
 
-- **@node装饰器** - 将函数转为可组合的数据处理单元
-- **链式调用** - `.then()`, `.fan_out_to()`, `.fan_in()`, `.branch_on()` 构建数据流
-- **智能执行** - 自动处理同步/异步函数混合，无需手动协调
-- **结果跟踪** - `ParallelResult` 提供并行执行的详细状态信息
+| 方法 | 功能 | 示例 |
+|------|------|------|
+| `.then(node)` | 顺序连接 | `a.then(b)(data)` |
+| `.fan_out_to([nodes], executor="thread")` | 并行分发 | `a.fan_out_to([b, c])()` |
+| `.fan_in(aggregator)` | 聚合并行结果 | `flow.fan_in(merge)()` |
+| `.fan_out_in([nodes], agg)` | 扇出 + 聚合 | `a.fan_out_in([b, c], merge)()` |
+| `.branch_on({key: node})` | 条件分支 | `a.branch_on({True: b, False: c})()` |
+| `.repeat(times)` | 重复执行 | `a.repeat(3)(data)` |
 
-| 方法 | 功能 | 用法示例 |
-|------|------|----------|
-| `.then(node)` | 顺序连接节点 | `a.then(b)(data)` |
-| `.fan_out_to([nodes])` | 并行分发到多个节点 | `a.fan_out_to([b, c])()` |
-| `.fan_in(aggregator)` | 聚合并行结果 | `flow.fan_in(merge_func)()` |
-| `.fan_out_in([nodes], agg)` | 扇出后立即聚合 | `a.fan_out_in([b, c], merge)()` |
-| `.branch_on({key: node})` | 条件分支执行 | `a.branch_on({"high": b, "low": c})()` |
-| `.repeat(times)` | 重复执行节点 | `a.repeat(3)(data)` |
+## 示例
 
-**ParallelResult结构**: `{'node_name': ParallelResult(success=bool, result=value, execution_time=float)}`
-
-## 🎯 完整示例
+### 顺序流：ETL 管道
 
 ```python
 from aetherflow import node
 import asyncio
 
-# 定义处理节点
 @node
-async def fetch_data(source: str) -> list:
-    await asyncio.sleep(0.1)  # 模拟异步IO
-    return [{"id": 1, "score": 85}, {"id": 2, "score": 45}]
-
-@node
-def validate_item(item: dict) -> dict:
-    return {**item, "valid": item["score"] > 0}
+async def fetch_data(source: str) -> dict:
+    await asyncio.sleep(0.1)
+    return {"value": 100, "source": source}
 
 @node
-def enrich_item(item: dict) -> dict:
-    return {**item, "grade": "A" if item["score"] >= 60 else "F"}
+def validate(data: dict) -> dict:
+    if data["value"] <= 0:
+        raise ValueError("invalid value")
+    return data
 
 @node
-def merge_results(parallel_results: dict) -> list:
-    return [r.result for r in parallel_results.values() if r.success]
+def enrich(data: dict) -> dict:
+    return {**data, "doubled": data["value"] * 2}
 
-@node
-def classify_by_grade(items: list) -> str:
-    avg_score = sum(item["score"] for item in items) / len(items)
-    return "high" if avg_score >= 60 else "low"
+pipeline = fetch_data.then(validate).then(enrich)
 
-@node
-def generate_report(items: list) -> dict:
-    return {"report": "success", "processed": len(items)}
-
-@node
-def send_alert(items: list) -> dict:
-    return {"alert": "sent", "low_score_count": len(items)}
-
-# 构建完整数据流：异步提取 → 并行处理 → 聚合 → 条件分支
-workflow = (
-    fetch_data
-    .fan_out_to([validate_item, enrich_item])  # 并行处理每条数据
-    .fan_in(merge_results)                     # 聚合结果
-    .then(classify_by_grade)                   # 分类评估
-    .branch_on({                               # 条件分支
-        "high": generate_report,
-        "low": send_alert
-    })
-)
-
-# 执行
 async def main():
-    result = await workflow("database")
-    print(result)  # {"alert": "sent", "low_score_count": 2}
+    result = await pipeline("db")
+    print(result)  # {"value": 100, "source": "db", "doubled": 200}
 
 asyncio.run(main())
 ```
 
-## 📊 对比优势
+### 并行流：扇出 + 聚合
 
-| 特性 | AetherFlow | Celery | Airflow | Ray |
-|------|-----------|--------|---------|-----|
-| **学习成本** | 低（函数式） | 中 | 高 | 中 |
-| **async/sync混合** | ✅ 自动处理 | ❌ | ❌ | ✅ 手动 |
-| **声明式设计** | ✅ 方法链 | ❌ | ❌ | ✅ |
-| **轻量部署** | ✅ 最小依赖 | ❌ 需Redis | ❌ 需集群 | ❌ |
+```python
+from aetherflow import node
 
-> **适用场景**：中小型数据处理任务，ai agents flow 构建，微服务数据管道，强调代码可读性和快速开发
+@node
+def source(x: int) -> dict:
+    return {"value": x}
 
-## 📚 文档资源
+@node
+def multiply(data: dict) -> int:
+    return data["value"] * 2
 
-- 📖 **完整文档**：[AetherFlow技术文档.md](docs/AetherFlow技术文档.md) - 深入了解架构设计和最佳实践
-- 💡 **代码示例**：`tests/` 目录 - 实际使用场景和测试用例
-- 🛠️ **开发参考**：`CLAUDE.md` - Claude Code集成开发指南
-- 🔍 **API参考**：技术文档中的完整API说明
+@node
+def add_ten(data: dict) -> int:
+    return data["value"] + 10
 
-## 🔧 开发环境
+@node
+def aggregate(results: dict) -> dict:
+    values = [r.result for r in results.values() if r.success]
+    return {"total": sum(values), "results": values}
 
-### 开发者安装
+workflow = source.fan_out_to([multiply, add_ten], executor="thread").fan_in(aggregate)
+result = workflow(5)
+print(result)  # {"total": 25, "results": [10, 15]}
+```
+
+### 条件流：分支路由 + 依赖注入
+
+```python
+from aetherflow import BaseFlowContext, node
+from dependency_injector.wiring import Provide
+
+container = BaseFlowContext()
+
+@node
+def evaluate(data: dict) -> str:
+    return "pass" if data["score"] >= 60 else "fail"
+
+@node
+def handle_pass(state: dict = Provide[BaseFlowContext.state]) -> dict:
+    return {"result": "pass", "score": state["score"]}
+
+@node
+def handle_fail(state: dict = Provide[BaseFlowContext.state]) -> dict:
+    return {"result": "fail", "score": state["score"]}
+
+container.wire(modules=[__name__])
+container.state()["score"] = 75
+
+flow = evaluate.branch_on({"pass": handle_pass, "fail": handle_fail})
+print(flow({"score": 75}))  # {"result": "pass", "score": 75}
+```
+
+### 重试机制
+
+```python
+from aetherflow import node
+
+@node(retry_count=3, retry_delay=0.5, backoff_factor=2.0, enable_retry=True)
+def external_call(x: int) -> int:
+    # 失败时自动重试，延迟按 0.5s → 1.0s → 2.0s 指数增长
+    return call_external_api(x)
+```
+
+## 开发环境
+
 ```bash
-# 克隆项目
 git clone https://github.com/12306hujunjie/AetherFlow.git
 cd AetherFlow
 
-# 使用PDM管理开发环境
-pdm install  # 安装所有依赖（包括开发依赖）
+pdm install
 
-# 运行测试
-pdm run pytest
-
-# 代码质量检查
-pdm run lint      # 代码检查
-pdm run format    # 代码格式化
-pdm run type-check # 类型检查
+pdm run pytest                                   # 运行测试
+pdm run pytest --cov=src/aetherflow              # 覆盖率
+pdm run ruff check src/ tests/                   # 代码检查
+pdm run mypy src/aetherflow/                     # 类型检查
 ```
 
-### 开发工具
-```bash
-# 完整测试套件
-pdm run test-all     # 运行所有测试
-pdm run test-cov     # 带覆盖率的测试
+## 技术栈
 
-# 文档测试
-pdm run doc-test     # 文档示例测试
-pdm run doc-test-verbose  # 详细输出
+- **Python 3.10+**
+- **dependency-injector** — 依赖注入与线程安全状态管理
+- **pydantic v2** — 类型校验
 
-# 预提交检查
-pdm run pre-commit   # 运行所有质量检查
-```
+核心模块：`asyncio` | `threading` | `concurrent.futures`
 
-## 🔧 技术栈
+## 文档
 
-**运行时依赖**：
-- **Python 3.10+** - 现代Python特性支持
-- **dependency-injector ≥ 4.48.1** - 依赖注入和状态管理
-- **pydantic ≥ 2.11.7** - 数据验证和类型安全
+- [API 参考](docs/API参考.md)
+- [CLAUDE.md](CLAUDE.md) — 开发指南
+- `tests/` — 测试用例与使用示例
 
+## 许可证
 
-**核心模块**：`asyncio` | `threading` | `concurrent.futures`
-
-## 📄 许可证
-
-MIT许可证 - 详见 [LICENSE](LICENSE)
-
----
-**立即开始构建您的智能数据处理系统！** 🚀
+MIT — 详见 [LICENSE](LICENSE)

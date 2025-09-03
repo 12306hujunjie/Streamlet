@@ -1,6 +1,6 @@
 [project]
 name = "aetherflow"
-version = "0.1.0"
+version = "0.0.1"
 description = "A powerful Python framework for building declarative, concurrent data processing workflows"
 authors = [
     {name = "12306hujunjie", email = "545512690@qq.com"},
@@ -25,7 +25,7 @@ classifiers = [
 [project.urls]
 Homepage = "https://github.com/12306hujunjie/AetherFlow"
 Repository = "https://github.com/12306hujunjie/AetherFlow"
-Documentation = "https://github.com/12306hujunjie/AetherFlow/blob/main/docs/AetherFlow技术文档.md"
+Documentation = "https://github.com/12306hujunjie/AetherFlow/blob/main/docs/API参考.md"
 "Bug Tracker" = "https://github.com/12306hujunjie/AetherFlow/issues"
 
 [build-system]

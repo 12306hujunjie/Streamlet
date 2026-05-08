@@ -44,7 +44,7 @@ jobs:
           pdm run ruff format --check src/ tests/
 
       - name: Run type checking
-        run: pdm run mypy src/aetherflow/
+        run: pdm run mypy src/streamlet/
 
       - name: Build package
         run: pdm build

@@ -1,5 +1,5 @@
 [project]
-name = "streamlet"
+name = "streamlet-py"
 version = "0.0.1"
 description = "A powerful Python framework for building declarative, concurrent data processing workflows"
 authors = [

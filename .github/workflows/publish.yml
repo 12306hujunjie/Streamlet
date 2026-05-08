@@ -13,7 +13,6 @@ on:
         options:
           - testpypi
           - pypi
-          - github
 
 jobs:
   publish:
@@ -22,7 +21,6 @@ jobs:
     permissions:
       id-token: write
       contents: read
-      packages: write
 
     steps:
       - uses: actions/checkout@v4
@@ -60,16 +58,6 @@ jobs:
           github.event_name == 'release' ||
           (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
         run: pdm publish --username __token__ --password ${{ secrets.PYPI_API_TOKEN }}
-
-      - name: Publish to GitHub Packages
-        if: |
-          github.event_name == 'release' ||
-          (github.event_name == 'workflow_dispatch' && inputs.target == 'github')
-        run: |
-          pdm publish \
-            --repository "https://pypkg.pkg.github.com/${{ github.repository_owner }}/" \
-            --username __token__ \
-            --password ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts to Release
         if: github.event_name == 'release'

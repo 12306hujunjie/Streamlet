@@ -1,5 +1,5 @@
 [project]
-name = "aetherflow"
+name = "aether-flow"
 version = "0.0.1"
 description = "A powerful Python framework for building declarative, concurrent data processing workflows"
 authors = [

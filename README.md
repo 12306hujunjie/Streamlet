@@ -13,7 +13,7 @@
 ## 快速开始
 
 ```bash
-pip install aetherflow
+pip install aether-flow
 ```
 
 ```python

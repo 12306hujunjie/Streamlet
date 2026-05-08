@@ -185,3 +185,5 @@ hive-mind-prompt-*.txt
 .bmad-core/
 .trae/
 .vscode/
+.DS_Store
+.spec-workflow

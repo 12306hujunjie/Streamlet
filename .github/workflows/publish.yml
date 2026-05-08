@@ -1,94 +1,66 @@
 name: Publish to PyPI
 
 on:
-  # 当创建release时自动发布到PyPI
   release:
     types: [published]
-
-  # 允许手动触发（用于测试或紧急发布）
   workflow_dispatch:
     inputs:
       target:
-        description: 'Publish target'
+        description: "Publish target"
         required: true
-        default: 'testpypi'
+        default: "testpypi"
         type: choice
         options:
           - testpypi
           - pypi
-      version_check:
-        description: 'Skip version validation'
-        required: false
-        default: false
-        type: boolean
 
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: release  # 使用环境保护
+    environment: release
     permissions:
-      id-token: write  # 用于可信发布
+      id-token: write
       contents: read
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
-    - name: Install PDM
-      run: |
-        pip install --upgrade pip
-        pip install pdm
+      - name: Install PDM
+        run: pip install pdm
 
-    - name: Install dependencies
-      run: pdm install -dG dev
+      - name: Install dependencies
+        run: pdm install --dev
 
-    - name: Run tests
-      run: pdm run pytest
+      - name: Run tests
+        run: pdm run pytest
 
-    - name: Run linting
-      run: |
-        pdm run ruff check .
-        pdm run ruff format --check .
+      - name: Run linting
+        run: |
+          pdm run ruff check src/ tests/
+          pdm run ruff format --check src/ tests/
 
-    # - name: Run type checking
-    #   run: pdm run mypy src/
+      - name: Run type checking
+        run: pdm run mypy src/aetherflow/
 
-    - name: Build package
-      run: pdm build
+      - name: Build package
+        run: pdm build
 
-    - name: Check package
-      run: |
-        pip install twine
-        twine check dist/*
+      - name: Publish to TestPyPI
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+        run: pdm publish --repository testpypi
 
-    - name: Publish to TestPyPI
-      if: |
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'testpypi') ||
-        (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
-      run: |
-        twine upload --repository testpypi dist/*
+      - name: Publish to PyPI
+        if: |
+          github.event_name == 'release' ||
+          (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+        run: pdm publish
 
-    - name: Upload wheel and sdist to Release
-      if: github.event_name == 'release'
-      run: |
-        gh release upload ${{ github.event.release.tag_name }} dist/*
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Publish to PyPI
-      if: |
-        (github.event_name == 'release') ||
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'pypi')
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: |
-        twine upload dist/*
+      - name: Upload artifacts to Release
+        if: github.event_name == 'release'
+        run: gh release upload ${{ github.event.release.tag_name }} dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

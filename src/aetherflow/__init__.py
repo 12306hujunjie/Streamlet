@@ -158,6 +158,12 @@ class RetryConfig:
         backoff_factor: float = 1.0,
         max_delay: float = 60.0,
     ):
+        if retry_count < 0:
+            raise ValueError(f"retry_count must be >= 0, got {retry_count}")
+        if retry_delay < 0:
+            raise ValueError(f"retry_delay must be >= 0, got {retry_delay}")
+        if max_delay < 0:
+            raise ValueError(f"max_delay must be >= 0, got {max_delay}")
         self.retry_count = retry_count
         self.retry_delay = retry_delay
         self.exception_types = exception_types
@@ -356,9 +362,9 @@ class BaseFlowContext(containers.DeclarativeContainer):
 
 def custom_validate_call(
     validate_return: bool = True,
-    config: ConfigDict = None,
-    node_name: str = None,
-):
+    config: ConfigDict | None = None,
+    node_name: str | None = None,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """
     自定义validate_call包装器，使用Pydantic最佳实践区分输入验证和输出验证异常
 
@@ -389,21 +395,21 @@ def custom_validate_call(
         # 提取公共逻辑
         func_name = node_name or _get_func_name(func)
 
-        def create_input_exception(e):
+        def create_input_exception(e: ValidationError) -> ValidationInputException:
             return ValidationInputException(
                 f"输入参数验证失败: {e}",
                 validation_error=e,
                 node_name=func_name,
             )
 
-        def create_output_exception(e):
+        def create_output_exception(e: ValidationError) -> ValidationOutputException:
             return ValidationOutputException(
                 f"返回值验证失败: {e}",
                 validation_error=e,
                 node_name=func_name,
             )
 
-        def validate_result(result):
+        def validate_result(result: Any) -> Any:
             if return_type_adapter:
                 try:
                     return_type_adapter.validate_python(result)
@@ -415,7 +421,7 @@ def custom_validate_call(
         if inspect.iscoroutinefunction(func):
 
             @functools.wraps(func)
-            async def async_wrapper(*args, **kwargs):
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
                     result = await input_validator(*args, **kwargs)
                 except ValidationError as e:
@@ -426,7 +432,7 @@ def custom_validate_call(
         else:
 
             @functools.wraps(func)
-            def sync_wrapper(*args, **kwargs):
+            def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
                     result = input_validator(*args, **kwargs)
                 except ValidationError as e:
@@ -968,6 +974,8 @@ def repeat_composition(node: Node, times: int, stop_on_error: bool = False) -> N
     """
 
     # 参数前置验证：立即检查参数，fail-fast原则
+    if not isinstance(times, int):
+        raise TypeError(f"times must be an integer, got {type(times).__name__}")
     if times <= 0:
         raise ValueError("Repeat times must be greater than 0")
     if not isinstance(node, Node):
@@ -1176,8 +1184,8 @@ def node(
         is_original_async = inspect.iscoroutinefunction(f)
 
         # 使用functools.reduce应用装饰器链
+        # inject必须在最外层，确保Provide[...]在验证/重试之前被解析为实际值
         decorators = [
-            inject,
             custom_validate_call(
                 validate_return=True,
                 config=ConfigDict(arbitrary_types_allowed=True),
@@ -1185,7 +1193,8 @@ def node(
             ),
         ]
         if enable_retry:
-            decorators.append(retry_decorator(config=config, node_name=node_name))  # type: ignore[arg-type]
+            decorators.append(retry_decorator(config=config, node_name=node_name))
+        decorators.append(inject)
 
         decorated_func = functools.reduce(lambda func, deco: deco(func), decorators, f)
 

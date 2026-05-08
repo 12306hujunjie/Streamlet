@@ -26,23 +26,12 @@ jobs:
     - name: Install PDM
       run: pip install pdm
 
-    # 安装依赖
     - name: Install dependencies
       run: pdm install --dev
 
-    # 运行测试
-    - name: Run tests
-      run: pdm run pytest tests/ --verbose
-
-    # 运行测试并生成覆盖率报告
     - name: Run tests with coverage
-      run: |
-        pdm run pip install pytest-cov
-        pdm run pytest tests/ --cov=src/aetherflow --cov-report=term-missing
+      run: pdm run pytest tests/ --verbose --cov=aetherflow --cov-report=term-missing
 
-    # 检查代码质量
     - name: Check code quality
-      run: |
-        pdm run pip install flake8
-        pdm run flake8 src/ --max-line-length=127
+      run: pdm run ruff check src/ tests/
       continue-on-error: true

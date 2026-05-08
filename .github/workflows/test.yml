@@ -59,7 +59,7 @@ jobs:
     # 5. 安装项目依赖
     - name: Install dependencies
       run: |
-        pdm install --dev
+        pdm install -G dev
 
     # 6. 代码质量检查（可选）
     - name: Lint with flake8

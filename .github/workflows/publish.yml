@@ -51,7 +51,7 @@ jobs:
 
       - name: Publish to TestPyPI
         if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
-        run: pdm publish --repository testpypi
+        run: pdm publish --repository testpypi --username __token__ --password ${{ secrets.TEST_PYPI_API_TOKEN }}
 
       - name: Publish to PyPI
         if: |

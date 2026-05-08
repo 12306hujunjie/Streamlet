@@ -25,9 +25,9 @@ Streamlet是一个智能异步数据处理工作流框架，核心架构基于�
 - **重试机制**: 可配置的指数退避重试，支持异步和同步节点
 
 ### 关键文件结构
-- `src/aetherflow/__init__.py`: 单一模块包含所有核心功能（~1000行）
+- `src/streamlet/__init__.py`: 单一模块包含所有核心功能（~1000行）
 - `tests/`: 全面的测试套件，使用@node装饰器模式避免pickle问题
-- `tests/utils/node_factory.py`: 标准化测试节点定义
+- `tests/ 测试文件直接定义测试节点`: 标准化测试节点定义
 - `tests/shared/`: 共享数据模型和测试常量
 
 ### 核心类和方法发现指南
@@ -73,7 +73,7 @@ pdm run ruff check src/ tests/
 pdm run ruff format src/ tests/
 
 # 类型检查 (MyPy配置在pyproject.toml中)
-pdm run mypy src/aetherflow/
+pdm run mypy src/streamlet/
 
 # 安全扫描 (Bandit配置排除tests目录)
 pdm run bandit -r src/
@@ -90,7 +90,7 @@ pdm run bandit -r src/
 - **Ruff格式化**: 88字符行长，双引号，空格缩进
 - **类型注解**: 所有函数必须有类型注解（MyPy strict模式）
 - **Pydantic验证**: 使用Pydantic BaseModel进行数据验证
-- **日志记录**: 使用标准logging库，logger名称为"aetherflow"
+- **日志记录**: 使用标准logging库，logger名称为"streamlet"
 - **命名约定**: 函数和变量使用snake_case，类使用PascalCase，常量使用UPPER_CASE
 - **文档字符串**: 使用简洁的docstring描述节点功能和参数，遵循项目现有风格
 - **导入组织**: 标准库 → 第三方库 → 项目内部导入，使用绝对导入路径
@@ -106,7 +106,7 @@ pdm run bandit -r src/
 
 ### 测试结构
 - **使用@node装饰器**: 测试节点定义在模块级别，支持pickle序列化
-- **共享基础设施**: 使用`tests/utils/node_factory.py`的标准化节点
+- **共享基础设施**: 使用`tests/ 测试文件直接定义测试节点`的标准化节点
 - **数据模型**: 使用`tests/shared/data_models.py`的Pydantic模型
 - **隔离性**: 每个测试使用独立的依赖注入容器
 
@@ -144,7 +144,7 @@ pdm run bandit -r src/
 4. **测试超时**: 检查并行执行器的max_workers配置
 
 ### 调试技巧
-- 启用详细日志: `logging.getLogger("aetherflow").setLevel(logging.DEBUG)`
+- 启用详细日志: `logging.getLogger("streamlet").setLevel(logging.DEBUG)`
 - 检查并行结果: 使用`ParallelResult`数据类分析执行状态
 - 状态检查: 通过依赖注入访问线程本地状态
 

@@ -149,7 +149,7 @@ pdm install
 pdm run pytest                                   # 运行测试
 pdm run pytest --cov=src/streamlet              # 覆盖率
 pdm run ruff check src/ tests/                   # 代码检查
-pdm run mypy src/aetherflow/                     # 类型检查
+pdm run mypy src/streamlet/                     # 类型检查
 ```
 
 ## 技术栈

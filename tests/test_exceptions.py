@@ -65,7 +65,7 @@ class TestUserBusinessException:
         exc = UserBusinessException("business error", retryable=True)
         assert exc.retryable is True
 
-    def test_inherits_from_aetherflow(self):
+    def test_inherits_from_streamlet(self):
         exc = UserBusinessException("error")
         assert isinstance(exc, StreamletException)
 

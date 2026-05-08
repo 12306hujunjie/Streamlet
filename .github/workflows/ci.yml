@@ -30,7 +30,7 @@ jobs:
       run: pdm install --dev
 
     - name: Run tests with coverage
-      run: pdm run pytest tests/ --verbose --cov=aetherflow --cov-report=term-missing
+      run: pdm run pytest tests/ --verbose --cov=streamlet --cov-report=term-missing
 
     - name: Check code quality
       run: pdm run ruff check src/ tests/

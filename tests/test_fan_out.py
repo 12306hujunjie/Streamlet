@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.aetherflow import ParallelResult, node
+from src.streamlet import ParallelResult, node
 
 
 @node

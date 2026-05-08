@@ -1,38 +1,38 @@
-"""Tests for AetherFlow exception classes."""
+"""Tests for Streamlet exception classes."""
 
-from src.aetherflow import (
-    AetherFlowException,
+from src.streamlet import (
     LoopControlException,
     NodeExecutionException,
     NodeRetryExhaustedException,
     NodeTimeoutException,
+    StreamletException,
     UserBusinessException,
     ValidationInputException,
     ValidationOutputException,
 )
 
 
-class TestAetherFlowException:
+class TestStreamletException:
     def test_base_exception_defaults(self):
-        exc = AetherFlowException("test message")
+        exc = StreamletException("test message")
         assert str(exc) == "test message"
         assert exc.node_name is None
         assert exc.context == {}
         assert exc.retryable is False
 
     def test_base_exception_with_node_name(self):
-        exc = AetherFlowException("error", node_name="my_node")
+        exc = StreamletException("error", node_name="my_node")
         assert exc.node_name == "my_node"
 
     def test_base_exception_with_kwargs(self):
-        exc = AetherFlowException("error", extra_data="value")
+        exc = StreamletException("error", extra_data="value")
         assert exc.context == {"extra_data": "value"}
 
 
 class TestValidationExceptions:
     def test_validation_input_exception(self):
         exc = ValidationInputException("invalid input", node_name="node1")
-        assert isinstance(exc, AetherFlowException)
+        assert isinstance(exc, StreamletException)
         assert exc.retryable is False
         assert exc.node_name == "node1"
 
@@ -43,7 +43,7 @@ class TestValidationExceptions:
 
     def test_validation_output_exception(self):
         exc = ValidationOutputException("invalid output")
-        assert isinstance(exc, AetherFlowException)
+        assert isinstance(exc, StreamletException)
         assert exc.retryable is False
 
     def test_validation_output_with_validation_error(self):
@@ -67,7 +67,7 @@ class TestUserBusinessException:
 
     def test_inherits_from_aetherflow(self):
         exc = UserBusinessException("error")
-        assert isinstance(exc, AetherFlowException)
+        assert isinstance(exc, StreamletException)
 
 
 class TestNodeExecutionException:
@@ -81,7 +81,7 @@ class TestNodeExecutionException:
 
     def test_inheritance_chain(self):
         exc = NodeExecutionException("fail")
-        assert isinstance(exc, AetherFlowException)
+        assert isinstance(exc, StreamletException)
 
 
 class TestNodeTimeoutException:
@@ -114,7 +114,7 @@ class TestNodeRetryExhaustedException:
 class TestLoopControlException:
     def test_basic(self):
         exc = LoopControlException("loop control")
-        assert isinstance(exc, AetherFlowException)
+        assert isinstance(exc, StreamletException)
 
     def test_retryable_attribute(self):
         exc = LoopControlException("loop")
@@ -124,23 +124,23 @@ class TestLoopControlException:
 class TestExceptionRetryablePropagation:
     """Verify retryable attribute is checked correctly."""
 
-    def test_aetherflow_exception_not_retryable(self):
-        exc = AetherFlowException("base error")
-        from src.aetherflow import RetryConfig
+    def test_streamlet_exception_not_retryable(self):
+        exc = StreamletException("base error")
+        from src.streamlet import RetryConfig
 
         config = RetryConfig()
         assert config.should_retry(exc) is False
 
     def test_user_business_exception_retryable(self):
         exc = UserBusinessException("business error")
-        from src.aetherflow import RetryConfig
+        from src.streamlet import RetryConfig
 
         config = RetryConfig()
         assert config.should_retry(exc) is True
 
     def test_user_business_exception_not_retryable_when_set(self):
         exc = UserBusinessException("business error", retryable=False)
-        from src.aetherflow import RetryConfig
+        from src.streamlet import RetryConfig
 
         config = RetryConfig()
         assert config.should_retry(exc) is False
@@ -149,7 +149,7 @@ class TestExceptionRetryablePropagation:
         class CustomError(Exception):
             retryable = True
 
-        from src.aetherflow import RetryConfig
+        from src.streamlet import RetryConfig
 
         config = RetryConfig(exception_types=(CustomError,))
         assert config.should_retry(CustomError()) is True

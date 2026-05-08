@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.aetherflow import Node, node
+from src.streamlet import Node, node
 
 
 class TestNodeCreation:

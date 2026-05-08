@@ -1,6 +1,6 @@
 """Tests for ParallelResult dataclass."""
 
-from src.aetherflow import ParallelResult
+from src.streamlet import ParallelResult
 
 
 class TestParallelResult:

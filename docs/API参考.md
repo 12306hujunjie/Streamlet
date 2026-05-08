@@ -1,4 +1,4 @@
-# AetherFlow API 参考
+# Streamlet API 参考
 
 ## @node 装饰器
 
@@ -116,7 +116,7 @@ container.wire(modules=[__name__])
 节点通过 `Provide[BaseFlowContext.state]` 注入依赖：
 
 ```python
-from aetherflow import BaseFlowContext, node
+from streamlet import BaseFlowContext, node
 from dependency_injector.wiring import Provide
 
 container = BaseFlowContext()
@@ -155,13 +155,13 @@ retry_decorator(
 
 | 异常 | 基类 | `retryable` | 说明 |
 |------|------|------------|------|
-| `AetherFlowException` | `Exception` | `False` | 框架基类异常 |
-| `ValidationInputException` | `AetherFlowException` | `False` | 输入参数校验失败 |
-| `ValidationOutputException` | `AetherFlowException` | `False` | 返回值校验失败 |
-| `UserBusinessException` | `AetherFlowException` | `True` | 用户业务异常，可覆盖 |
-| `NodeExecutionException` | `AetherFlowException` | - | 节点执行失败 |
+| `StreamletException` | `Exception` | `False` | 框架基类异常 |
+| `ValidationInputException` | `StreamletException` | `False` | 输入参数校验失败 |
+| `ValidationOutputException` | `StreamletException` | `False` | 返回值校验失败 |
+| `UserBusinessException` | `StreamletException` | `True` | 用户业务异常，可覆盖 |
+| `NodeExecutionException` | `StreamletException` | - | 节点执行失败 |
 | `NodeTimeoutException` | `NodeExecutionException` | - | 执行超时 |
 | `NodeRetryExhaustedException` | `NodeExecutionException` | - | 重试耗尽 |
-| `LoopControlException` | `AetherFlowException` | - | `repeat(stop_on_error=True)` 触发 |
+| `LoopControlException` | `StreamletException` | - | `repeat(stop_on_error=True)` 触发 |
 
-`AetherFlowException` 构造：`__init__(message: str, node_name: str | None = None, **kwargs)`。`kwargs` 存入 `context` 字典。
+`StreamletException` 构造：`__init__(message: str, node_name: str | None = None, **kwargs)`。`kwargs` 存入 `context` 字典。

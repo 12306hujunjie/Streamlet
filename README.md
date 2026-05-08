@@ -1,4 +1,4 @@
-# AetherFlow - 智能流式数据处理框架
+# Streamlet - 智能流式数据处理框架
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -13,11 +13,11 @@
 ## 快速开始
 
 ```bash
-pip install aether-flow
+pip install streamlet
 ```
 
 ```python
-from aetherflow import node
+from streamlet import node
 
 @node
 def double(x: int) -> int:
@@ -46,7 +46,7 @@ result = double.then(add_ten)(5)  # 20
 ### 顺序流：ETL 管道
 
 ```python
-from aetherflow import node
+from streamlet import node
 import asyncio
 
 @node
@@ -76,7 +76,7 @@ asyncio.run(main())
 ### 并行流：扇出 + 聚合
 
 ```python
-from aetherflow import node
+from streamlet import node
 
 @node
 def source(x: int) -> dict:
@@ -103,7 +103,7 @@ print(result)  # {"total": 25, "results": [10, 15]}
 ### 条件流：分支路由 + 依赖注入
 
 ```python
-from aetherflow import BaseFlowContext, node
+from streamlet import BaseFlowContext, node
 from dependency_injector.wiring import Provide
 
 container = BaseFlowContext()
@@ -130,7 +130,7 @@ print(flow({"score": 75}))  # {"result": "pass", "score": 75}
 ### 重试机制
 
 ```python
-from aetherflow import node
+from streamlet import node
 
 @node(retry_count=3, retry_delay=0.5, backoff_factor=2.0, enable_retry=True)
 def external_call(x: int) -> int:
@@ -141,13 +141,13 @@ def external_call(x: int) -> int:
 ## 开发环境
 
 ```bash
-git clone https://github.com/12306hujunjie/AetherFlow.git
-cd AetherFlow
+git clone https://github.com/12306hujunjie/Streamlet.git
+cd Streamlet
 
 pdm install
 
 pdm run pytest                                   # 运行测试
-pdm run pytest --cov=src/aetherflow              # 覆盖率
+pdm run pytest --cov=src/streamlet              # 覆盖率
 pdm run ruff check src/ tests/                   # 代码检查
 pdm run mypy src/aetherflow/                     # 类型检查
 ```

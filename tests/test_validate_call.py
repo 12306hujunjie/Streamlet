@@ -3,7 +3,7 @@
 import pytest
 from pydantic import BaseModel
 
-from src.aetherflow import (
+from src.streamlet import (
     ValidationInputException,
     ValidationOutputException,
     custom_validate_call,

@@ -1,8 +1,8 @@
-"""pytest configuration for AetherFlow tests."""
+"""pytest configuration for Streamlet tests."""
 
 import pytest
 
-from src.aetherflow import BaseFlowContext
+from src.streamlet import BaseFlowContext
 
 
 @pytest.fixture

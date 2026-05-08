@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 项目架构
 
 ### 核心概念
-AetherFlow是一个智能异步数据处理工作流框架，核心架构基于：
+Streamlet是一个智能异步数据处理工作流框架，核心架构基于：
 
 - **Node类**: 执行图的基本单元，支持fluent interface链式调用和智能异步/同步混合执行
 - **@node装饰器**: 智能节点包装器，自动处理异步/同步兼容性、重试机制和依赖注入
@@ -60,7 +60,7 @@ pdm run python -m pytest tests/test_conditional_composition.py -v
 pdm run python -m pytest tests/test_fan_primitives.py::test_fan_out_to_executor_types -v
 
 # 带覆盖率报告
-pdm run python -m pytest --cov=src/aetherflow --cov-report=html
+pdm run python -m pytest --cov=src/streamlet --cov-report=html
 
 # 并行测试（如果需要）
 pdm run python -m pytest -n auto

@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.aetherflow import node
+from src.streamlet import node
 
 
 @node
@@ -47,7 +47,7 @@ class TestThenBasic:
         assert result == 30  # (5 + 10) * 2
 
     def test_chain_returns_node(self):
-        from src.aetherflow import Node
+        from src.streamlet import Node
 
         flow = double.then(add_ten)
         assert isinstance(flow, Node)

@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.aetherflow import (
+from src.streamlet import (
     RetryConfig,
     UserBusinessException,
     node,

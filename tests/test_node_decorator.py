@@ -3,7 +3,7 @@
 import pytest
 from dependency_injector.wiring import Provide
 
-from src.aetherflow import BaseFlowContext, Node, node
+from src.streamlet import BaseFlowContext, Node, node
 
 
 class TestNodeDecoratorCallModes:
@@ -121,7 +121,7 @@ class TestNodeDecoratorTypeValidation:
         assert double(5) == 10
 
     def test_invalid_type_raises(self):
-        from src.aetherflow import ValidationInputException
+        from src.streamlet import ValidationInputException
 
         @node
         def double(x: int) -> int:
@@ -131,7 +131,7 @@ class TestNodeDecoratorTypeValidation:
             double("not_int")
 
     def test_invalid_return_type_raises(self):
-        from src.aetherflow import ValidationOutputException
+        from src.streamlet import ValidationOutputException
 
         @node
         def bad_return(x: int) -> str:

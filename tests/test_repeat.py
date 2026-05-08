@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.aetherflow import LoopControlException, Node, node
+from src.streamlet import LoopControlException, Node, node
 
 
 @node

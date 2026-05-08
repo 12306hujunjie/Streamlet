@@ -13,7 +13,7 @@ from dependency_injector import containers, providers
 from dependency_injector.wiring import inject
 from pydantic import ConfigDict, TypeAdapter, ValidationError, validate_call
 
-logger = logging.getLogger("aetherflow")
+logger = logging.getLogger("streamlet")
 
 
 @dataclass
@@ -29,8 +29,8 @@ class ParallelResult:
 
 
 # ==================== 异常类型体系 ====================
-class AetherFlowException(Exception):
-    """AetherFlow框架基础异常类"""
+class StreamletException(Exception):
+    """Streamlet框架基础异常类"""
 
     retryable = False  # 默认框架异常不重试
 
@@ -42,7 +42,7 @@ class AetherFlowException(Exception):
         super().__init__(message)
 
 
-class ValidationInputException(AetherFlowException):
+class ValidationInputException(StreamletException):
     """参数验证异常 - validate_call前置校验失败"""
 
     retryable = False  # 参数验证失败不应该重试
@@ -58,7 +58,7 @@ class ValidationInputException(AetherFlowException):
         super().__init__(message, node_name, **kwargs)
 
 
-class ValidationOutputException(AetherFlowException):
+class ValidationOutputException(StreamletException):
     """返回值验证异常 - validate_call返回值校验失败"""
 
     retryable = False  # 返回值验证失败不应该重试
@@ -74,7 +74,7 @@ class ValidationOutputException(AetherFlowException):
         super().__init__(message, node_name, **kwargs)
 
 
-class UserBusinessException(AetherFlowException):
+class UserBusinessException(StreamletException):
     """用户业务异常基类 - 用户可自定义重试策略"""
 
     retryable = True  # 默认用户业务异常可重试
@@ -92,7 +92,7 @@ class UserBusinessException(AetherFlowException):
         super().__init__(message, node_name, **kwargs)
 
 
-class NodeExecutionException(AetherFlowException):
+class NodeExecutionException(StreamletException):
     """节点执行异常"""
 
     def __init__(
@@ -138,7 +138,7 @@ class NodeRetryExhaustedException(NodeExecutionException):
         )
 
 
-class LoopControlException(AetherFlowException):
+class LoopControlException(StreamletException):
     """循环控制异常基类"""
 
     pass
@@ -300,9 +300,9 @@ def retry_decorator(
 
 
 # Context variables for asyncio coroutine safety
-_context_state: ContextVar[dict | None] = ContextVar("aetherflow_state", default=None)
+_context_state: ContextVar[dict | None] = ContextVar("streamlet_state", default=None)
 _context_context: ContextVar[dict | None] = ContextVar(
-    "aetherflow_context", default=None
+    "streamlet_context", default=None
 )
 
 
@@ -323,7 +323,7 @@ class ContextVarProvider(providers.Provider):
             default_factory: 创建默认值的工厂函数，默认为dict
         """
         super().__init__()
-        self._context_var = ContextVar(f"aetherflow_{id(self)}", default=None)
+        self._context_var = ContextVar(f"streamlet_{id(self)}", default=None)
         self._default_factory = default_factory
 
     def _provide(self, *args: Any, **kwargs: Any) -> Any:
@@ -1220,7 +1220,7 @@ __all__ = [
     # 并行执行结果模型
     "ParallelResult",
     # 异常类
-    "AetherFlowException",
+    "StreamletException",
     "ValidationInputException",
     "ValidationOutputException",
     "UserBusinessException",

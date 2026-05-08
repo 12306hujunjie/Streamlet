@@ -3,7 +3,7 @@
 import pytest
 from dependency_injector.wiring import Provide
 
-from src.aetherflow import (
+from src.streamlet import (
     BaseFlowContext,
     Node,
     conditional_composition,

@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from src.aetherflow import BaseFlowContext, ContextVarProvider
+from src.streamlet import BaseFlowContext, ContextVarProvider
 
 
 class TestContextVarProvider:

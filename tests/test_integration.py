@@ -1,11 +1,11 @@
-"""End-to-end integration tests for AetherFlow workflows."""
+"""End-to-end integration tests for Streamlet workflows."""
 
 import asyncio
 import threading
 
 import pytest
 
-from src.aetherflow import ParallelResult, node
+from src.streamlet import ParallelResult, node
 
 
 class TestFullPipeline:
@@ -86,7 +86,7 @@ class TestConditionalWorkflow:
     def test_conditional_routing(self):
         from dependency_injector.wiring import Provide
 
-        from aetherflow import BaseFlowContext
+        from streamlet import BaseFlowContext
 
         container = BaseFlowContext()
 
@@ -136,7 +136,7 @@ class TestConcurrentSafety:
     def test_state_isolation_in_threads(self):
         from dependency_injector.wiring import Provide
 
-        from aetherflow import BaseFlowContext
+        from streamlet import BaseFlowContext
 
         container = BaseFlowContext()
 

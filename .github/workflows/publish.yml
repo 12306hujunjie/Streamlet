@@ -57,7 +57,7 @@ jobs:
         if: |
           github.event_name == 'release' ||
           (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
-        run: pdm publish
+        run: pdm publish --username __token__ --password ${{ secrets.PYPI_API_TOKEN }}
 
       - name: Upload artifacts to Release
         if: github.event_name == 'release'

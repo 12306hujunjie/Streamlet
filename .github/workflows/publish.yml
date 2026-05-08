@@ -1,4 +1,4 @@
-name: Publish to PyPI
+name: Publish
 
 on:
   release:
@@ -55,7 +55,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
         run: pdm publish --repository testpypi --username __token__ --password ${{ secrets.TEST_PYPI_API_TOKEN }}
 
-      - name: Publish to PyPI
+      - name: Publish
         if: |
           github.event_name == 'release' ||
           (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')

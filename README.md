@@ -13,7 +13,7 @@
 ## 快速开始
 
 ```bash
-pip install streamlet
+pip install streamlet-py
 ```
 
 ```python

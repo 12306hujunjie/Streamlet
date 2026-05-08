@@ -66,7 +66,7 @@ jobs:
           (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
         run: |
           pdm publish \
-            --repository-url "https://pypkg.pkg.github.com/${{ github.repository_owner }}/" \
+            --repository "https://pypkg.pkg.github.com/${{ github.repository_owner }}/" \
             --username __token__ \
             --password ${{ secrets.GITHUB_TOKEN }}
 

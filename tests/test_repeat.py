@@ -3,12 +3,7 @@
 import pytest
 
 from src.streamlet import LoopControlException, Node, node
-
-
-@node
-def increment(data: dict) -> dict:
-    val = data.get("value", 0)
-    return {"value": val + 1}
+from tests.conftest import increment
 
 
 @node
@@ -106,3 +101,13 @@ class TestRepeatAsync:
         flow = async_failing.repeat(2, stop_on_error=True)
         with pytest.raises(LoopControlException):
             await flow({"value": 0})
+
+
+class TestRepeatCompositionFunc:
+    """repeat_composition 独立函数的额外参数校验。"""
+
+    def test_non_node_raises(self):
+        from src.streamlet import repeat_composition
+
+        with pytest.raises(TypeError, match="node must be a Node"):
+            repeat_composition("not_a_node", times=3)  # type: ignore[arg-type]

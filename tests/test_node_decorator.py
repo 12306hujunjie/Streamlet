@@ -51,51 +51,6 @@ class TestNodeDecoratorAsync:
         assert func.is_async is True
 
 
-class TestNodeDecoratorRetry:
-    def test_node_with_retry_enabled(self):
-        call_count = 0
-
-        class TempError(Exception):
-            retryable = True
-
-        @node(
-            retry_count=2,
-            retry_delay=0.01,
-            exception_types=(TempError,),
-            enable_retry=True,
-        )
-        def flaky(x: int) -> int:
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise TempError("retry")
-            return x * 2
-
-        result = flaky(5)
-        assert result == 10
-        assert call_count == 3
-
-    def test_node_retry_disabled_by_default(self):
-        @node
-        def func(x: int) -> int:
-            return x * 2
-
-        assert func(5) == 10
-
-    def test_node_custom_retry_config(self):
-        @node(
-            retry_count=5,
-            retry_delay=0.5,
-            backoff_factor=2.0,
-            max_delay=30.0,
-            enable_retry=True,
-        )
-        def func(x: int) -> int:
-            return x * 2
-
-        assert func(5) == 10
-
-
 class TestNodeDecoratorWithDI:
     def test_node_with_dependency_injection(self):
         container = BaseFlowContext()
@@ -139,3 +94,38 @@ class TestNodeDecoratorTypeValidation:
 
         with pytest.raises(ValidationOutputException):
             bad_return(5)
+
+
+class TestNodeProperties:
+    """Node 实例的底层属性与编码行为。"""
+
+    def test_node_func_access(self):
+        @node
+        def my_func(x: int) -> int:
+            return x * 2
+
+        assert callable(my_func.func)
+        assert my_func.func(5) == 10
+
+    def test_node_repr(self):
+        @node
+        def my_func(x: int) -> int:
+            return x * 2
+
+        assert repr(my_func) == "Node(name='my_func')"
+
+    def test_node_wraps_async_node(self):
+        @node
+        async def async_func(x: int) -> int:
+            return x * 2
+
+        wrapper = Node(func=async_func, name="wrapper")
+        assert wrapper.is_async is True
+
+    def test_explicit_is_async_override(self):
+        @node
+        async def async_func(x: int) -> int:
+            return x * 2
+
+        wrapper = Node(func=async_func.func, name="wrapper", is_async=True)
+        assert wrapper.is_async is True

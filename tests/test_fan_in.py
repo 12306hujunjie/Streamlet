@@ -1,35 +1,15 @@
-"""Tests for Node.fan_in() aggregation."""
+"""Tests for Node.fan_in() aggregation and Node.fan_out_in() combined operation."""
 
 import pytest
 
 from src.streamlet import ParallelResult, node
-
-
-@node
-def source_data(x: int) -> dict:
-    return {"value": x}
-
-
-@node
-def multiply(data: dict) -> int:
-    return data["value"] * 2
-
-
-@node
-def add_five(data: dict) -> int:
-    return data["value"] + 5
-
-
-@node
-def aggregate(parallel_results: dict) -> dict:
-    successful = [r.result for r in parallel_results.values() if r.success]
-    return {"total": sum(successful), "count": len(successful)}
+from tests.conftest import add_five, aggregate_sum, multiply, source_data
 
 
 class TestFanInBasic:
     def test_fan_out_then_fan_in(self):
         flow = source_data.fan_out_to([multiply, add_five], executor="thread").fan_in(
-            aggregate
+            aggregate_sum
         )
         result = flow(10)
         assert result["total"] == 35  # 20 + 15
@@ -38,7 +18,7 @@ class TestFanInBasic:
     @pytest.mark.asyncio
     async def test_async_fan_out_then_fan_in(self):
         flow = source_data.fan_out_to([multiply, add_five], executor="async").fan_in(
-            aggregate
+            aggregate_sum
         )
         result = await flow(10)
         assert result["total"] == 35
@@ -62,7 +42,9 @@ class TestFanInBasic:
 
 class TestFanInEdgeCases:
     def test_single_target_aggregation(self):
-        flow = source_data.fan_out_to([multiply], executor="thread").fan_in(aggregate)
+        flow = source_data.fan_out_to([multiply], executor="thread").fan_in(
+            aggregate_sum
+        )
         result = flow(10)
         assert result["total"] == 20
         assert result["count"] == 1
@@ -74,7 +56,20 @@ class TestFanInEdgeCases:
 
         flow = source_data.fan_out_to(
             [multiply, failing_node], executor="thread"
-        ).fan_in(aggregate)
+        ).fan_in(aggregate_sum)
         result = flow(10)
         assert result["count"] == 1  # only multiply succeeded
         assert result["total"] == 20
+
+
+class TestFanOutIn:
+    """fan_out_in() 等价于 fan_out_to().fan_in() 的语法糖验证。"""
+
+    def test_equivalent_to_fan_out_then_fan_in(self):
+        result1 = source_data.fan_out_in(
+            [multiply, add_five], aggregate_sum, executor="thread"
+        )(10)
+        result2 = source_data.fan_out_to(
+            [multiply, add_five], executor="thread"
+        ).fan_in(aggregate_sum)(10)
+        assert result1 == result2

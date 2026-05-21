@@ -7,7 +7,7 @@ resolves Provide[BaseFlowContext.state] to actual values from the container.
 import pytest
 from dependency_injector.wiring import Provide
 
-from streamlet import BaseFlowContext, Node, node
+from src.streamlet import BaseFlowContext, Node, node
 
 
 class TestBranchOnBoolean:

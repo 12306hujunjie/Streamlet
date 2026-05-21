@@ -4,8 +4,10 @@ import asyncio
 import threading
 
 import pytest
+from dependency_injector.wiring import Provide
 
-from src.streamlet import ParallelResult, node
+from src.streamlet import BaseFlowContext, ParallelResult, node
+from tests.conftest import increment
 
 
 class TestFullPipeline:
@@ -84,10 +86,6 @@ class TestConditionalWorkflow:
     """Conditional branching workflows."""
 
     def test_conditional_routing(self):
-        from dependency_injector.wiring import Provide
-
-        from streamlet import BaseFlowContext
-
         container = BaseFlowContext()
 
         @node
@@ -134,10 +132,6 @@ class TestConcurrentSafety:
             assert r.success is True
 
     def test_state_isolation_in_threads(self):
-        from dependency_injector.wiring import Provide
-
-        from streamlet import BaseFlowContext
-
         container = BaseFlowContext()
 
         @node
@@ -197,10 +191,6 @@ class TestLargeDataHandling:
     """Performance with larger datasets."""
 
     def test_many_iterations_repeat(self):
-        @node
-        def increment(data: dict) -> dict:
-            return {"value": data.get("value", 0) + 1}
-
         flow = increment.repeat(100)
         result = flow({"value": 0})
         assert result["value"] == 100

@@ -3,31 +3,7 @@
 import pytest
 
 from src.streamlet import node
-
-
-@node
-def double(x: int) -> int:
-    return x * 2
-
-
-@node
-def add_ten(x: int) -> int:
-    return x + 10
-
-
-@node
-def to_string(x: int) -> str:
-    return f"result:{x}"
-
-
-@node
-async def async_double(x: int) -> int:
-    return x * 2
-
-
-@node
-async def async_add_ten(x: int) -> int:
-    return x + 10
+from tests.conftest import add_ten, async_add_ten, async_double, double, to_string
 
 
 class TestThenBasic:

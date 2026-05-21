@@ -3,26 +3,7 @@
 import pytest
 
 from src.streamlet import ParallelResult, node
-
-
-@node
-def source_data(x: int) -> dict:
-    return {"value": x}
-
-
-@node
-def multiply(data: dict) -> int:
-    return data["value"] * 2
-
-
-@node
-def add_five(data: dict) -> int:
-    return data["value"] + 5
-
-
-@node
-def square(data: dict) -> int:
-    return data["value"] ** 2
+from tests.conftest import add_five, multiply, source_data, square
 
 
 @node

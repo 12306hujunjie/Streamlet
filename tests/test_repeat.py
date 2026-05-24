@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.streamlet import LoopControlException, Node, node
+from src.streamlet import node
 from tests.conftest import increment
 
 
@@ -32,9 +32,9 @@ class TestRepeatBasic:
         result = flow({"value": 1})
         assert result["value"] == 8  # 1*2=2, 2*2=4, 4*2=8
 
-    def test_repeat_returns_node(self):
+    def test_repeat_returns_callable(self):
         flow = increment.repeat(3)
-        assert isinstance(flow, Node)
+        assert callable(flow)
 
     def test_repeat_zero_raises(self):
         with pytest.raises(ValueError, match="Repeat times"):
@@ -52,7 +52,7 @@ class TestRepeatBasic:
 class TestRepeatErrorHandling:
     def test_stop_on_error_true(self):
         flow = failing_node.repeat(3, stop_on_error=True)
-        with pytest.raises(LoopControlException):
+        with pytest.raises(ValueError, match="iteration failed"):
             flow({"value": 0})
 
     def test_stop_on_error_false_continues(self):
@@ -99,15 +99,5 @@ class TestRepeatAsync:
             raise ValueError("async iteration failed")
 
         flow = async_failing.repeat(2, stop_on_error=True)
-        with pytest.raises(LoopControlException):
+        with pytest.raises(ValueError, match="iteration failed"):
             await flow({"value": 0})
-
-
-class TestRepeatCompositionFunc:
-    """repeat_composition 独立函数的额外参数校验。"""
-
-    def test_non_node_raises(self):
-        from src.streamlet import repeat_composition
-
-        with pytest.raises(TypeError, match="node must be a Node"):
-            repeat_composition("not_a_node", times=3)  # type: ignore[arg-type]

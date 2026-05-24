@@ -38,7 +38,7 @@ class TestNodeDecoratorAsync:
         async def func(x: int) -> int:
             return x * 2
 
-        assert func.is_async is True
+        assert func._is_async is True
         assert await func(5) == 10
 
     @pytest.mark.asyncio
@@ -48,7 +48,7 @@ class TestNodeDecoratorAsync:
             return x * 2
 
         assert func.name == "async_node"
-        assert func.is_async is True
+        assert func._is_async is True
 
 
 class TestNodeDecoratorWithDI:

@@ -6,6 +6,7 @@ AsyncExecutor: 异步执行，gather 使用 asyncio.gather
 
 import asyncio
 import contextvars
+import time
 import traceback
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -48,6 +49,25 @@ class SyncExecutor:
     def run(self, node: Any, *args: Any, **kwargs: Any) -> Any:
         return node._execute(*args, **kwargs)
 
+    def _run_with_time(self, node: Any, inp: Any) -> Any:
+        start = time.time()
+        try:
+            result = node._execute(inp)
+            return ParallelResult(
+                node_name=node.name,
+                success=True,
+                result=result,
+                execution_time=time.time() - start,
+            )
+        except Exception as e:
+            return ParallelResult(
+                node_name=node.name,
+                success=False,
+                error=str(e),
+                error_traceback=traceback.format_exc(),
+                execution_time=time.time() - start,
+            )
+
     def gather(
         self,
         node_inputs: list[tuple[Any, Any]],
@@ -57,26 +77,14 @@ class SyncExecutor:
         results: dict[str, ParallelResult] = {}
         with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
             futures = [
-                (ex.submit(parent_ctx.copy().run, self.run, n, inp), n)
+                (ex.submit(parent_ctx.copy().run, self._run_with_time, n, inp), n)
                 for n, inp in node_inputs
             ]
             for future, node in futures:
                 base = key_func(node) if key_func else node.name
                 key = _unique_key(base, results)
-                try:
-                    result = future.result()
-                    results[key] = ParallelResult(
-                        node_name=node.name,
-                        success=True,
-                        result=result,
-                    )
-                except Exception as e:
-                    results[key] = ParallelResult(
-                        node_name=node.name,
-                        success=False,
-                        error=str(e),
-                        error_traceback=traceback.format_exc(),
-                    )
+                pr = future.result()
+                results[key] = pr
         return results
 
 
@@ -93,12 +101,14 @@ class AsyncExecutor:
     ) -> dict[str, "ParallelResult"]:
         async def _execute_one(node: Any, inp: Any) -> tuple[str, ParallelResult]:
             base = key_func(node) if key_func else node.name
+            start = time.time()
             try:
                 result = await node._execute_async(inp)
                 return base, ParallelResult(
                     node_name=node.name,
                     success=True,
                     result=result,
+                    execution_time=time.time() - start,
                 )
             except Exception as e:
                 return base, ParallelResult(
@@ -106,6 +116,7 @@ class AsyncExecutor:
                     success=False,
                     error=str(e),
                     error_traceback=traceback.format_exc(),
+                    execution_time=time.time() - start,
                 )
 
         results_list = await asyncio.gather(

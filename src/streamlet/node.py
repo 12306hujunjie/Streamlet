@@ -8,12 +8,9 @@ from typing import Any
 
 from pydantic import ConfigDict
 
-from . import (
-    RetryConfig,
-    custom_validate_call,
-    retry_decorator,
-)
+from . import custom_validate_call
 from .graph import Conditional, FanIn, Parallel, Pipeline, Repeat
+from .retry import RetryConfig, retry_decorator
 
 logger = __import__("logging").getLogger("streamlet")
 

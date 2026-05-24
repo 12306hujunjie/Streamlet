@@ -1,6 +1,7 @@
 """测试 executor.py —— SyncExecutor / AsyncExecutor / 并行 / 错误处理。"""
 
 import asyncio
+import inspect
 import time
 
 import pytest
@@ -22,13 +23,13 @@ class StubNode:
 
     def _execute(self, *args, **kwargs):
         result = self._func(*args, **kwargs)
-        if self._is_async:
+        if inspect.iscoroutine(result):
             return asyncio.run(result)
         return result
 
     async def _execute_async(self, *args, **kwargs):
         result = self._func(*args, **kwargs)
-        if self._is_async:
+        if inspect.iscoroutine(result):
             return await result
         return result
 

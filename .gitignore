@@ -188,3 +188,5 @@ hive-mind-prompt-*.txt
 .DS_Store
 .spec-workflow
 .superpowers
+skills-lock.json
+.agents

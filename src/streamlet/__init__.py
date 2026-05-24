@@ -14,7 +14,7 @@ logger = logging.getLogger("streamlet")
 
 @dataclass
 class ParallelResult:
-    """Pydantic model for recording parallel execution results and exception stacks."""
+    """并行执行结果——记录成功/失败状态、错误信息、执行时间。"""
 
     node_name: str
     success: bool
@@ -24,124 +24,20 @@ class ParallelResult:
     execution_time: float | None = None
 
 
-# ==================== 异常类型体系 ====================
-class StreamletException(Exception):
-    """Streamlet框架基础异常类"""
+# ==================== 异常类型体系（已迁移到 exceptions.py） ====================
 
-    retryable = False  # 默认框架异常不重试
-
-    def __init__(
-        self, message: str, node_name: str | None = None, **kwargs: Any
-    ) -> None:
-        self.node_name = node_name
-        self.context = kwargs
-        super().__init__(message)
-
-
-class ValidationInputException(StreamletException):
-    """参数验证异常 - validate_call前置校验失败"""
-
-    retryable = False  # 参数验证失败不应该重试
-
-    def __init__(
-        self,
-        message: str,
-        validation_error: Any = None,
-        node_name: str | None = None,
-        **kwargs: Any,
-    ) -> None:
-        self.validation_error = validation_error
-        super().__init__(message, node_name, **kwargs)
-
-
-class ValidationOutputException(StreamletException):
-    """返回值验证异常 - validate_call返回值校验失败"""
-
-    retryable = False  # 返回值验证失败不应该重试
-
-    def __init__(
-        self,
-        message: str,
-        validation_error: Any = None,
-        node_name: str | None = None,
-        **kwargs: Any,
-    ) -> None:
-        self.validation_error = validation_error
-        super().__init__(message, node_name, **kwargs)
-
-
-class UserBusinessException(StreamletException):
-    """用户业务异常基类 - 用户可自定义重试策略"""
-
-    retryable = True  # 默认用户业务异常可重试
-
-    def __init__(
-        self,
-        message: str,
-        retryable: bool | None = None,
-        node_name: str | None = None,
-        **kwargs: Any,
-    ) -> None:
-        # 允许用户在实例化时覆盖重试策略
-        if retryable is not None:
-            self.retryable = retryable
-        super().__init__(message, node_name, **kwargs)
-
-
-class NodeExecutionException(StreamletException):
-    """节点执行异常"""
-
-    def __init__(
-        self,
-        message: str,
-        node_name: str | None = None,
-        original_exception: Exception | None = None,
-        **kwargs: Any,
-    ) -> None:
-        self.original_exception = original_exception
-        super().__init__(message, node_name, **kwargs)
-
-
-class NodeTimeoutException(NodeExecutionException):
-    """节点执行超时异常"""
-
-    def __init__(
-        self,
-        message: str,
-        node_name: str | None = None,
-        timeout_seconds: float | None = None,
-        **kwargs: Any,
-    ) -> None:
-        self.timeout_seconds = timeout_seconds
-        super().__init__(message, node_name, **kwargs)
-
-
-class NodeRetryExhaustedException(NodeExecutionException):
-    """节点重试次数耗尽异常"""
-
-    def __init__(
-        self,
-        message: str,
-        node_name: str | None = None,
-        retry_count: int | None = None,
-        last_exception: Exception | None = None,
-        **kwargs: Any,
-    ) -> None:
-        self.retry_count = retry_count
-        self.last_exception = last_exception
-        super().__init__(
-            message, node_name, original_exception=last_exception, **kwargs
-        )
-
-
-class LoopControlException(StreamletException):
-    """循环控制异常基类"""
-
-    pass
-
+from .exceptions import (  # noqa: E402
+    LoopControlException,
+    NodeExecutionException,
+    NodeRetryExhaustedException,
+    NodeTimeoutException,
+    StreamletException,
+    UserBusinessException,
+    ValidationInputException,
+    ValidationOutputException,
+)
 
 # ==================== 重试装饰器（已迁移到 retry.py） ====================
-
 from .retry import RetryConfig, _get_func_name  # noqa: E402
 
 # 原 RetryConfig / retry_decorator / _get_func_name 已提取到 retry.py

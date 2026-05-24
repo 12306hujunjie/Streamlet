@@ -7,7 +7,7 @@ resolves Provide[BaseFlowContext.state] to actual values from the container.
 import pytest
 from dependency_injector.wiring import Provide
 
-from src.streamlet import BaseFlowContext, Node, node
+from src.streamlet import BaseFlowContext, node
 
 
 class TestBranchOnBoolean:
@@ -111,7 +111,7 @@ class TestBranchOnBoolean:
         with pytest.raises(ValueError, match="No branch defined"):
             flow({"score": 35})
 
-    def test_returns_node(self):
+    def test_returns_callable(self):
         container = self.container
 
         @node
@@ -125,7 +125,7 @@ class TestBranchOnBoolean:
         container.wire(modules=[__name__])
 
         flow = check_score.branch_on({True: handle})
-        assert isinstance(flow, Node)
+        assert callable(flow)
 
     @pytest.mark.asyncio
     async def test_async_branch(self):

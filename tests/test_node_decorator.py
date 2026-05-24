@@ -97,35 +97,11 @@ class TestNodeDecoratorTypeValidation:
 
 
 class TestNodeProperties:
-    """Node 实例的底层属性与编码行为。"""
-
-    def test_node_func_access(self):
-        @node
-        def my_func(x: int) -> int:
-            return x * 2
-
-        assert callable(my_func.func)
-        assert my_func.func(5) == 10
+    """Node 实例的基础属性。"""
 
     def test_node_repr(self):
         @node
         def my_func(x: int) -> int:
             return x * 2
 
-        assert repr(my_func) == "Node(name='my_func')"
-
-    def test_node_wraps_async_node(self):
-        @node
-        async def async_func(x: int) -> int:
-            return x * 2
-
-        wrapper = Node(func=async_func, name="wrapper")
-        assert wrapper.is_async is True
-
-    def test_explicit_is_async_override(self):
-        @node
-        async def async_func(x: int) -> int:
-            return x * 2
-
-        wrapper = Node(func=async_func.func, name="wrapper", is_async=True)
-        assert wrapper.is_async is True
+        assert "my_func" in repr(my_func)

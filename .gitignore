@@ -187,3 +187,4 @@ hive-mind-prompt-*.txt
 .vscode/
 .DS_Store
 .spec-workflow
+.superpowers

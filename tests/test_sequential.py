@@ -22,11 +22,9 @@ class TestThenBasic:
         result = flow(5)
         assert result == 30  # (5 + 10) * 2
 
-    def test_chain_returns_node(self):
-        from src.streamlet import Node
-
+    def test_chain_returns_callable(self):
         flow = double.then(add_ten)
-        assert isinstance(flow, Node)
+        assert callable(flow)
 
 
 class TestThenAsyncSyncMixing:

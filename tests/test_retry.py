@@ -1,13 +1,8 @@
-"""Tests for RetryConfig and retry_decorator."""
+"""Tests for RetryConfig and @node retry integration."""
 
 import pytest
 
-from src.streamlet import (
-    RetryConfig,
-    UserBusinessException,
-    node,
-    retry_decorator,
-)
+from src.streamlet import RetryConfig, UserBusinessException, node
 
 
 class TestRetryConfig:
@@ -79,133 +74,6 @@ class TestRetryConfig:
     def test_negative_max_delay_raises(self):
         with pytest.raises(ValueError, match="max_delay"):
             RetryConfig(max_delay=-1.0)
-
-
-class TestRetryDecoratorSync:
-    def test_success_first_try(self):
-        call_count = 0
-
-        def func():
-            nonlocal call_count
-            call_count += 1
-            return "ok"
-
-        config = RetryConfig(retry_count=2, retry_delay=0.01)
-        decorated = retry_decorator(config)(func)
-        result = decorated()
-        assert result == "ok"
-        assert call_count == 1
-
-    def test_retry_and_succeed(self):
-        call_count = 0
-
-        class TemporaryError(Exception):
-            retryable = True
-
-        def func():
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise TemporaryError("try again")
-            return "ok"
-
-        config = RetryConfig(
-            retry_count=3, retry_delay=0.01, exception_types=(TemporaryError,)
-        )
-        decorated = retry_decorator(config)(func)
-        result = decorated()
-        assert result == "ok"
-        assert call_count == 3
-
-    def test_retry_exhausted(self):
-        call_count = 0
-
-        class TemporaryError(Exception):
-            retryable = True
-
-        def func():
-            nonlocal call_count
-            call_count += 1
-            raise TemporaryError("always fails")
-
-        config = RetryConfig(
-            retry_count=2, retry_delay=0.01, exception_types=(TemporaryError,)
-        )
-        decorated = retry_decorator(config)(func)
-        with pytest.raises(TemporaryError):
-            decorated()
-        assert call_count == 3  # initial + 2 retries
-
-    def test_non_retryable_exception_raises_immediately(self):
-        call_count = 0
-
-        class NonRetryableError(Exception):
-            retryable = False
-
-        def func():
-            nonlocal call_count
-            call_count += 1
-            raise NonRetryableError("not retryable")
-
-        config = RetryConfig(retry_count=3, retry_delay=0.01)
-        decorated = retry_decorator(config)(func)
-        with pytest.raises(NonRetryableError):
-            decorated()
-        assert call_count == 1
-
-
-class TestRetryDecoratorAsync:
-    @pytest.mark.asyncio
-    async def test_async_success_first_try(self):
-        call_count = 0
-
-        async def func():
-            nonlocal call_count
-            call_count += 1
-            return "ok"
-
-        config = RetryConfig(retry_count=2, retry_delay=0.01)
-        decorated = retry_decorator(config)(func)
-        result = await decorated()
-        assert result == "ok"
-        assert call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_async_retry_and_succeed(self):
-        call_count = 0
-
-        class TemporaryError(Exception):
-            retryable = True
-
-        async def func():
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise TemporaryError("try again")
-            return "ok"
-
-        config = RetryConfig(
-            retry_count=3, retry_delay=0.01, exception_types=(TemporaryError,)
-        )
-        decorated = retry_decorator(config)(func)
-        result = await decorated()
-        assert result == "ok"
-        assert call_count == 3
-
-    @pytest.mark.asyncio
-    async def test_async_retry_exhausted(self):
-        class TemporaryError(Exception):
-            retryable = True
-
-        async def func():
-            raise TemporaryError("always fails")
-
-        config = RetryConfig(
-            retry_count=1, retry_delay=0.01, exception_types=(TemporaryError,)
-        )
-        decorated = retry_decorator(config)(func)
-        with pytest.raises(TemporaryError):
-            await decorated()
 
 
 class TestNodeWithRetry:

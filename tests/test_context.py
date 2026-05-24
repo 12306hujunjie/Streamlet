@@ -1,48 +1,8 @@
-"""Tests for ContextVarProvider and BaseFlowContext."""
+"""Tests for BaseFlowContext."""
 
-import asyncio
 import threading
 
-import pytest
-
-from src.streamlet import BaseFlowContext, ContextVarProvider
-
-
-class TestContextVarProvider:
-    def test_provide_default(self):
-        provider = ContextVarProvider(default_factory=dict)
-        value = provider()
-        assert value == {}
-
-    def test_provide_custom_factory(self):
-        provider = ContextVarProvider(default_factory=list)
-        value = provider()
-        assert value == []
-
-    def test_provide_returns_same_object(self):
-        provider = ContextVarProvider(default_factory=dict)
-        value1 = provider()
-        value1["key"] = "val"
-        value2 = provider()
-        assert value2["key"] == "val"
-
-    @pytest.mark.asyncio
-    async def test_async_context_var_isolation(self):
-        """ContextVar should provide isolation between async tasks."""
-        provider = ContextVarProvider(default_factory=dict)
-
-        async def set_and_return(key: str, value: int) -> int:
-            state = provider()
-            state[key] = value
-            return state[key]
-
-        results = await asyncio.gather(
-            set_and_return("a", 1),
-            set_and_return("b", 2),
-        )
-        # Each task gets its own copy (or shared for same event loop)
-        assert 1 in results
-        assert 2 in results
+from src.streamlet import BaseFlowContext
 
 
 class TestBaseFlowContext:

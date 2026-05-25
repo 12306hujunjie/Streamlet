@@ -13,28 +13,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目架构
 
+### 模块划分（共 7 个源文件，~940 行）
+
+| 模块 | 行数 | 职责 |
+|---|---|---|
+| `src/streamlet/__init__.py` | 37 | 公共 API 重导出中枢（14 个公开符号） |
+| `src/streamlet/node.py` | 182 | `Node` 类 + `@node` 装饰器 |
+| `src/streamlet/graph.py` | 192 | 5 个内部组合类（Pipeline/Parallel/Conditional/Repeat/FanIn） |
+| `src/streamlet/executor.py` | 142 | `SyncExecutor` / `AsyncExecutor` + `ParallelResult` |
+| `src/streamlet/context.py` | 116 | `BaseFlowContext` DI 容器 + `custom_validate_call` |
+| `src/streamlet/retry.py` | 142 | `RetryConfig` + `retry_decorator` |
+| `src/streamlet/exceptions.py` | 118 | 8 个异常类 |
+
 ### 核心概念
-Streamlet是一个智能异步数据处理工作流框架，核心架构基于：
 
-- **Node类**: 执行图的基本单元，支持fluent interface链式调用和智能异步/同步混合执行
-- **@node装饰器**: 智能节点包装器，自动处理异步/同步兼容性、重试机制和依赖注入
-- **流式接口**: `.then()`, `.fan_out_to()`, `.fan_in()`, `.branch_on()`, `.repeat()` 方法支持任意async/sync混合
-- **智能异步系统**: 框架自动检测async/sync函数并选择正确的执行策略，无需开发者显式处理
-- **并行处理**: 基于ThreadPoolExecutor的扇出/扇入模式，支持混合异步执行
-- **依赖注入**: 集成dependency-injector，使用BaseFlowContext进行线程安全状态管理
-- **重试机制**: 可配置的指数退避重试，支持异步和同步节点
-
-### 关键文件结构
-- `src/streamlet/__init__.py`: 单一模块包含所有核心功能（~1000行）
-- `tests/`: 全面的测试套件，使用@node装饰器模式避免pickle问题
-- `tests/ 测试文件直接定义测试节点`: 标准化测试节点定义
-- `tests/shared/`: 共享数据模型和测试常量
+- **Node类**: 执行图的基本单元，支持 fluent interface 链式调用，包装原始函数或内部 Graph 对象
+- **@node装饰器**: 构建装饰器链 `validate → retry → di_inject`，通过 `functools.reduce` 组合
+- **流式接口**: `.then()`, `.fan_out_to()`, `.fan_in()`, `.branch_on()`, `.repeat()` 创建内部 Graph 对象后重新包装为 Node
+- **5 个内部组合类**: 用户不直接实例化，由 Node fluent 方法创建。每个类实现 `_sync_run` / `_async_run`，通过 `_is_async` 标志分发
+- **双执行器模式**: `SyncExecutor`（ThreadPoolExecutor）+ `AsyncExecutor`（asyncio.gather），共享 `run/gather` 概念接口
+- **智能异步系统**: `_is_async` 沿组合链向上传播（OR 逻辑），自动选择同步/异步执行路径
+- **依赖注入**: `BaseFlowContext` 提供 5 个 provider：`state`/`context`（ThreadLocalSingleton）、`shared_data`（Singleton）、`async_state`/`async_context`（ContextVarProvider）
+- **重试机制**: `RetryConfig` 配置指数退避，通过 `retryable` 类属性协议判断异常是否可重试
 
 ### 核心类和方法发现指南
-- 使用 `Grep` 搜索 `class Node` 了解Node类的完整定义
-- 搜索 `def then|def fan_out|def fan_in|def branch_on|def repeat` 了解fluent interface方法
-- 查看 `@node` 装饰器定义了解节点包装机制
-- 搜索 `BaseFlowContext` 了解依赖注入容器结构
+- `node.py` — `class Node` fluent 方法：`then`, `fan_out_to`, `fan_in`, `branch_on`, `repeat`, `fan_out_in`
+- `graph.py` — 5 个内部组合类的 `_sync_run` / `_async_run` 实现
+- `executor.py` — `SyncExecutor` / `AsyncExecutor` + `ParallelResult` 数据类
+- `context.py` — `BaseFlowContext` DI 容器 + `custom_validate_call` + `ContextVarProvider`
+- `retry.py` — `RetryConfig` + `retry_decorator` + `_get_func_name`
+- `exceptions.py` — 8 个异常类的继承层次和 `retryable` 属性协议
 
 ## 开发命令
 
@@ -52,12 +60,12 @@ pdm list                 # 查看依赖树
 pdm run python -m pytest
 
 # 运行特定测试文件
-pdm run python -m pytest tests/test_then_core.py -v
-pdm run python -m pytest tests/test_fan_primitives.py -v
-pdm run python -m pytest tests/test_conditional_composition.py -v
+pdm run python -m pytest tests/test_sequential.py -v
+pdm run python -m pytest tests/test_fan_out.py -v
+pdm run python -m pytest tests/test_graph.py -v
 
 # 运行特定测试函数
-pdm run python -m pytest tests/test_fan_primitives.py::test_fan_out_to_executor_types -v
+pdm run python -m pytest tests/test_fan_out.py::test_fan_out_to_executor_types -v
 
 # 带覆盖率报告
 pdm run python -m pytest --cov=src/streamlet --cov-report=html
@@ -96,44 +104,40 @@ pdm run bandit -r src/
 - **导入组织**: 标准库 → 第三方库 → 项目内部导入，使用绝对导入路径
 
 ### 架构约束
-- **单模块设计**: 核心功能集中在`__init__.py`中，避免过度拆分
-- **线程安全**: 使用ThreadLocalSingleton模式进行状态隔离
-- **可序列化**: 所有Node必须支持pickle序列化（用于进程池）
-- **依赖注入**: 使用dependency-injector容器管理状态
-- **组合层次**: composition函数使用Node类，@node装饰器仅用于用户业务节点
+- **模块职责单一**: 每个模块一个清晰职责（node/graph/executor/context/retry/exceptions），`__init__.py` 纯重导出
+- **内部/外部分离**: Graph 内部类（Pipeline/Parallel/Conditional/Repeat/FanIn）不对外暴露，由 Node fluent 方法创建
+- **线程安全**: ThreadLocalSingleton（线程隔离）+ ContextVarProvider（协程安全）+ `contextvars.copy_context()` 传播
+- **可序列化**: 所有 Node 必须支持 pickle 序列化（用于进程池）
+- **依赖注入**: 使用 dependency-injector 容器管理状态，`@node` 自动注入
+- **组合层次**: Graph 组合类处理执行逻辑，Node 类提供用户接口，@node 装饰器仅用于用户业务节点
+- **retryable 属性协议**: 异常类通过 `retryable` 类属性声明可重试性，`RetryConfig.should_retry()` 优先检查此属性
 
 ## 测试原则
 
-### 测试结构
-- **使用@node装饰器**: 测试节点定义在模块级别，支持pickle序列化
-- **共享基础设施**: 使用`tests/ 测试文件直接定义测试节点`的标准化节点
-- **数据模型**: 使用`tests/shared/data_models.py`的Pydantic模型
-- **隔离性**: 每个测试使用独立的依赖注入容器
+### 测试文件组织（14 个测试文件 + conftest.py，~2100 行）
 
-### 测试覆盖
-- **核心原语测试**: then、fan_out、fan_in、branch_on、repeat功能
-- **并发安全测试**: 线程池和进程池执行器的正确性
-- **错误处理测试**: 重试机制、异常传播、超时处理
-- **依赖注入测试**: 状态管理和线程隔离
+| 测试文件 | 测试目标 |
+|---|---|
+| `tests/conftest.py` | 共享 fixture（`container`）+ 可复用 `@node` 测试节点 |
+| `tests/test_node_decorator.py` | @node 装饰器调用模式、async/sync、DI、类型验证 |
+| `tests/test_graph.py` | 5 个内部 Graph 类的单元测试（使用 StubNode） |
+| `tests/test_executor.py` | SyncExecutor/AsyncExecutor 的 run/gather、ContextVar 传播 |
+| `tests/test_retry.py` | RetryConfig 配置、重试/指数退避/异常判断 |
+| `tests/test_exceptions.py` | 8 个异常类的继承层次和 retryable 属性 |
+| `tests/test_context.py` | BaseFlowContext provider 和线程/协程隔离 |
+| `tests/test_validate_call.py` | custom_validate_call 输入/输出验证 |
+| `tests/test_sequential.py` | Node.then() 链式调用及 async/sync 混合 |
+| `tests/test_fan_out.py` | Node.fan_out_to() 并行扇出 |
+| `tests/test_fan_in.py` | Node.fan_in() 聚合 + fan_out_in() |
+| `tests/test_conditional.py` | Node.branch_on() 条件分支 |
+| `tests/test_repeat.py` | Node.repeat() 循环执行 |
+| `tests/test_integration.py` | E2E 工作流：ETL、扇出扇入、条件路由、线程安全、错误恢复 |
 
-### 测试开发指南
-
-**探索现有模式**：
-- 使用 `Grep` 工具搜索 `@node` 装饰器了解节点定义模式
-- 查看 `tests/utils/` 目录了解当前可用的测试工具和节点工厂
-- 参考 `tests/shared/` 目录了解数据模型和测试常量
-- 检查现有测试文件学习fluent interface链式调用模式
-
-**核心测试约束**：
-- 测试节点必须定义在模块级别以支持pickle序列化
-- 使用 `@node` 装饰器而不是直接实例化Node类
-- 每个测试应使用独立的依赖注入容器实例
-- 异步/同步混合测试需要正确的await处理
-
-**发现测试工具**：
-- 搜索 `tests/utils/` 目录了解验证工具
-- 查看 `ParallelResult` 相关用法了解并行处理验证
-- 检查现有测试的container setup模式
+### 核心测试约束
+- 测试节点必须定义在模块级别以支持 pickle 序列化
+- 使用 `@node` 装饰器而非直接实例化 Node 类
+- `tests/test_graph.py` 使用 `StubNode` 直接测试内部 Graph 类
+- 每个测试使用独立的依赖注入容器实例
 
 ## 调试和问题排查
 

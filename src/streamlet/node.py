@@ -4,7 +4,7 @@ import asyncio
 import functools
 import inspect
 from collections.abc import Callable
-from typing import Any
+from typing import Any, overload
 
 from dependency_injector.wiring import inject as _di_inject
 from pydantic import ConfigDict
@@ -120,6 +120,24 @@ class Node:
 # ============================================================
 # @node 装饰器
 # ============================================================
+
+
+@overload
+def node_decorator(func: Callable) -> Node: ...
+
+
+@overload
+def node_decorator(
+    func: None = None,
+    *,
+    retry_count: int = 3,
+    name: str | None = None,
+    retry_delay: float = 1.0,
+    exception_types: tuple = (Exception,),
+    backoff_factor: float = 1.0,
+    max_delay: float = 60.0,
+    enable_retry: bool = False,
+) -> Callable[[Callable], Node]: ...
 
 
 def node_decorator(

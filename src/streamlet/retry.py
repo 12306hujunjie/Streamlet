@@ -44,7 +44,7 @@ class RetryConfig:
         return min(delay, self.max_delay)
 
 
-def _get_func_name(func: Any, fallback_name: str | None = None) -> str:
+def get_func_name(func: Any, fallback_name: str | None = None) -> str:
     """安全获取函数名称"""
     if hasattr(func, "__name__"):
         return str(func.__name__)
@@ -65,7 +65,7 @@ def retry_decorator(
     """重试装饰器"""
 
     def decorator(func: Callable) -> Callable:
-        func_name = node_name or _get_func_name(func)
+        func_name = node_name or get_func_name(func)
 
         if inspect.iscoroutinefunction(func):
 

@@ -222,3 +222,46 @@ class TestAsyncExecutorAGather:
         assert not results["failer"].success
         assert "async boom" in results["failer"].error
         assert results["failer"].error_traceback is not None
+
+
+# ============================================================
+# ContextVar 传播测试
+# ============================================================
+
+
+class TestContextVarPropagation:
+    """ContextVar 在线程池和 asyncio.gather 中的传播。"""
+
+    def test_contextvar_propagated_to_thread_pool(self):
+        """ContextVar 显式设置后在 SyncExecutor.gather 线程池中正确传播。"""
+        import contextvars
+
+        cv = contextvars.ContextVar("test_executor_cv", default=None)
+        cv.set("parent_value")
+
+        def read_ctx_var(x):
+            return cv.get()
+
+        node = StubNode("ctx_reader", read_ctx_var)
+        ex = SyncExecutor()
+
+        results = ex.gather([(node, 1)])
+        assert results["ctx_reader"].result == "parent_value"
+
+    @pytest.mark.asyncio
+    async def test_contextvar_inherited_in_async_gather(self):
+        """ContextVar 在 asyncio.gather 中自动继承（协程天然支持 ContextVar）。"""
+        import contextvars
+
+        cv = contextvars.ContextVar("test_async_cv", default=None)
+        cv.set("parent_async_value")
+
+        async def read_ctx_var(x):
+            await asyncio.sleep(0)
+            return cv.get()
+
+        node = StubNode("async_ctx_reader", read_ctx_var, is_async=True)
+        ex = AsyncExecutor()
+
+        results = await ex.agather([(node, 1)])
+        assert results["async_ctx_reader"].result == "parent_async_value"

@@ -10,9 +10,20 @@ import time
 import traceback
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
-from . import ParallelResult
+
+@dataclass
+class ParallelResult:
+    """并行执行结果——记录成功/失败状态、错误信息、执行时间。"""
+
+    node_name: str
+    success: bool
+    result: Any = None
+    error: str | None = None
+    error_traceback: str | None = None
+    execution_time: float | None = None
 
 
 def _unique_key(base_name: str, existing: dict) -> str:

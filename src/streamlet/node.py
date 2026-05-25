@@ -6,26 +6,14 @@ import inspect
 from collections.abc import Callable
 from typing import Any
 
+from dependency_injector.wiring import inject as _di_inject
 from pydantic import ConfigDict
 
-from . import custom_validate_call
+from .context import custom_validate_call
 from .graph import Conditional, FanIn, Parallel, Pipeline, Repeat
-from .retry import RetryConfig, retry_decorator
+from .retry import RetryConfig, get_func_name, retry_decorator
 
 logger = __import__("logging").getLogger("streamlet")
-
-
-def _get_func_name(func: Any, fallback_name: str | None = None) -> str:
-    if hasattr(func, "__name__"):
-        return str(func.__name__)
-    elif hasattr(func, "func") and hasattr(func.func, "__name__"):
-        return str(func.func.__name__)
-    elif hasattr(func, "name"):
-        return str(func.name)
-    elif fallback_name:
-        return fallback_name
-    else:
-        return "unknown_function"
 
 
 class Node:
@@ -152,7 +140,7 @@ def node_decorator(
 
     @functools.wraps(Node)
     def decorator(f: Callable) -> Node:
-        node_name = name or _get_func_name(f, "unnamed_node")
+        node_name = name or get_func_name(f, "unnamed_node")
         is_original_async = inspect.iscoroutinefunction(f)
 
         decorators = [
@@ -164,7 +152,7 @@ def node_decorator(
         ]
         if enable_retry:
             decorators.append(retry_decorator(config=config, node_name=node_name))
-        decorators.append(__import__("dependency_injector.wiring").wiring.inject)
+        decorators.append(_di_inject)
 
         decorated_func = functools.reduce(lambda func, deco: deco(func), decorators, f)
         return Node(func=decorated_func, name=node_name, is_async=is_original_async)

@@ -150,6 +150,22 @@ class TestParallel:
         assert not results["failer"].success
         assert "target failed" in results["failer"].error
 
+    def test_auto_mixed_sync_async_targets(self):
+        """auto 模式 + 混合 sync/async 目标 → 走 async 路径。"""
+        source = StubNode("src", lambda x: x)
+
+        async def a_target(x):
+            return x * 2
+
+        t1 = StubNode("sync_t", lambda x: x + 10)
+        t2 = StubNode("async_t", a_target, is_async=True)
+        p = Parallel(source, [t1, t2], executor_type="auto")
+
+        assert p._is_async is True
+        results = p(5)
+        assert results["sync_t"].result == 15
+        assert results["async_t"].result == 10
+
 
 # ============================================================
 # Conditional 测试
@@ -183,6 +199,20 @@ class TestConditional:
 
         assert c._is_async is True
         assert c(1) == "hit"
+
+    def test_none_as_branch_key(self):
+        """None 作为合法分支键值。"""
+        cond = StubNode("maybe_none", lambda x: None if x == 0 else x)
+        c = Conditional(
+            cond,
+            {
+                None: StubNode("nil", lambda: "got_none"),
+                1: StubNode("one", lambda: "got_1"),
+            },
+        )
+
+        assert c(0) == "got_none"
+        assert c(1) == "got_1"
 
 
 # ============================================================
@@ -270,3 +300,30 @@ class TestFanIn:
 
         with pytest.raises(ValueError, match="upstream failed"):
             fi(0)
+
+    def test_aggregator_error(self):
+        """聚合器节点自身失败时异常正确传播。"""
+        upstream = StubNode("up", lambda x: {"data": x})
+
+        def fail_agg(_):
+            raise ValueError("aggregator boom")
+
+        agg = StubNode("fail_agg", fail_agg)
+        fi = FanIn(upstream, agg)
+
+        with pytest.raises(ValueError, match="aggregator boom"):
+            fi(42)
+
+    def test_async_path_with_sync_upstream(self):
+        """上游 sync + 聚合器 async → _is_async=True 走 _async_run。"""
+        upstream = StubNode("up", lambda x: {"v": x})
+
+        async def async_agg(d):
+            return f"async:{d['v']}"
+
+        agg = StubNode("async_agg", async_agg, is_async=True)
+        fi = FanIn(upstream, agg)
+
+        assert fi._is_async is True
+        result = fi(7)
+        assert result == "async:7"

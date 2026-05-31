@@ -13,6 +13,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
+from .context import apply_context, capture_context
+
 
 @dataclass
 class ParallelResult:
@@ -79,16 +81,31 @@ class SyncExecutor:
                 execution_time=time.time() - start,
             )
 
+    def _run_isolated(self, node: Any, inp: Any, snapshot: dict[int, Any]) -> Any:
+        """在隔离的 context 中执行——dict 浅拷贝避免线程池 task 间污染。"""
+        apply_context(snapshot)
+        return self._run_with_time(node, inp)
+
     def gather(
         self,
         node_inputs: list[tuple[Any, Any]],
         key_func: Callable[[Any], str] | None = None,
     ) -> dict[str, "ParallelResult"]:
         parent_ctx = contextvars.copy_context()
+        parent_snapshot = capture_context()
         results: dict[str, ParallelResult] = {}
         with ThreadPoolExecutor(max_workers=self.max_workers) as ex:
             futures = [
-                (ex.submit(parent_ctx.copy().run, self._run_with_time, n, inp), n)
+                (
+                    ex.submit(
+                        parent_ctx.copy().run,
+                        self._run_isolated,
+                        n,
+                        inp,
+                        parent_snapshot,
+                    ),
+                    n,
+                )
                 for n, inp in node_inputs
             ]
             for future, node in futures:
@@ -110,7 +127,11 @@ class AsyncExecutor:
         node_inputs: list[tuple[Any, Any]],
         key_func: Callable[[Any], str] | None = None,
     ) -> dict[str, "ParallelResult"]:
+        parent_ctx_snapshot = capture_context()
+
         async def _execute_one(node: Any, inp: Any) -> tuple[str, ParallelResult]:
+            # fan-out 分支隔离：为每个 asyncio task 注入独立的 context 快照
+            apply_context(parent_ctx_snapshot)
             base = key_func(node) if key_func else node.name
             start = time.time()
             try:

@@ -8,6 +8,8 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from .exceptions import NodeRetryExhaustedException
+
 logger = logging.getLogger("streamlet")
 
 
@@ -21,7 +23,7 @@ class RetryConfig:
         exception_types: tuple = (Exception,),
         backoff_factor: float = 1.0,
         max_delay: float = 60.0,
-    ):
+    ) -> None:
         if retry_count < 0:
             raise ValueError(f"retry_count must be >= 0, got {retry_count}")
         if retry_delay < 0:
@@ -94,7 +96,12 @@ def retry_decorator(
                             logger.error(
                                 f"节点 {func_name} 重试 {config.retry_count} 次后仍失败: {type(e).__name__}: {e}"
                             )
-                            raise
+                            raise NodeRetryExhaustedException(
+                                message=f"节点 {func_name} 重试次数耗尽",
+                                node_name=func_name,
+                                retry_count=config.retry_count,
+                                last_exception=e,
+                            ) from e
                         delay = config.get_delay(attempt)
                         logger.warning(
                             f"节点 {func_name} 第 {attempt + 1} 次尝试失败: {e}，{delay:.2f}秒后重试"
@@ -129,7 +136,12 @@ def retry_decorator(
                             logger.error(
                                 f"节点 {func_name} 重试 {config.retry_count} 次后仍失败: {type(e).__name__}: {e}"
                             )
-                            raise
+                            raise NodeRetryExhaustedException(
+                                message=f"节点 {func_name} 重试次数耗尽",
+                                node_name=func_name,
+                                retry_count=config.retry_count,
+                                last_exception=e,
+                            ) from e
                         delay = config.get_delay(attempt)
                         logger.warning(
                             f"节点 {func_name} 第 {attempt + 1} 次尝试失败: {e}，{delay:.2f}秒后重试"

@@ -54,10 +54,10 @@ class TestNodeDecoratorAsync:
 class TestNodeDecoratorWithDI:
     def test_node_with_dependency_injection(self):
         container = BaseFlowContext()
-        container.state()["key"] = "di_value"
+        container.context()["key"] = "di_value"
 
         @node
-        def di_node(x: int, state: dict = Provide[BaseFlowContext.state]) -> dict:
+        def di_node(x: int, state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"x": x, "state_key": state.get("key")}
 
         container.wire(modules=[__name__])

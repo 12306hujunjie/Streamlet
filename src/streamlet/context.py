@@ -6,6 +6,7 @@ BaseFlowContext + ContextVarProvider + custom_validate_call。
 import functools
 import inspect
 import logging
+import weakref
 from collections.abc import Callable
 from contextvars import ContextVar
 from typing import Any
@@ -18,14 +19,30 @@ from .retry import get_func_name
 
 logger = logging.getLogger("streamlet")
 
+# 模块级注册表——供 executor 做 fan-out 隔离
+_CONTEXTVAR_PROVIDERS: weakref.WeakSet = weakref.WeakSet()
+
 
 class ContextVarProvider(providers.Provider):
-    """自定义 Provider 类，支持 ContextVar 的协程安全依赖注入。"""
+    """ContextVar 驱动的 Provider——同时支持线程安全和协程安全。"""
 
     def __init__(self, default_factory: Callable[[], Any] = dict):
         super().__init__()
         self._context_var = ContextVar(f"streamlet_{id(self)}", default=None)
         self._default_factory = default_factory
+        _CONTEXTVAR_PROVIDERS.add(self)
+
+    def __deepcopy__(self, memo: dict[Any, Any] | None) -> "ContextVarProvider":
+        # dependency-injector 会在容器实例化时 deepcopy providers；
+        # 必须确保复制出来的新 provider 也被注册，且拥有独立的 ContextVar。
+        if memo is None:
+            memo = {}
+        copy_obj = memo.get(id(self))
+        if copy_obj is not None:
+            return copy_obj
+        copy_obj = ContextVarProvider(self._default_factory)
+        memo[id(self)] = copy_obj
+        return copy_obj
 
     def _provide(self, *args: Any, **kwargs: Any) -> Any:
         value = self._context_var.get()
@@ -35,15 +52,37 @@ class ContextVarProvider(providers.Provider):
         return value
 
 
+def capture_context() -> dict[int, Any]:
+    """捕获所有 ContextVarProvider 当前值的快照（fan-out 隔离用）。
+
+    仅捕获已初始化的值（None 表示未初始化，不触发 lazy init）。
+    """
+
+    return {id(p): p._context_var.get() for p in list(_CONTEXTVAR_PROVIDERS)}
+
+
+def apply_context(snapshot: dict[int, Any]) -> None:
+    """在当前执行上下文中应用快照。dict 值做浅拷贝避免分支/线程间共享。
+
+    同时用于：
+    - AsyncExecutor.agather：asyncio Task 间隔离
+    - SyncExecutor.gather：线程池 worker 间隔离（线程复用场景）
+    """
+
+    for provider in list(_CONTEXTVAR_PROVIDERS):
+        val = snapshot.get(id(provider))
+        if val is None:
+            provider._context_var.set(None)
+        elif isinstance(val, dict):
+            provider._context_var.set(dict(val))
+        else:
+            provider._context_var.set(val)
+
+
 class BaseFlowContext(containers.DeclarativeContainer):
-    """Base container for flow context with thread-safe and coroutine-safe DI."""
+    """Flow context——线程安全 + 协程安全的 DI 容器。"""
 
-    state: providers.Provider = providers.ThreadLocalSingleton(dict)
-    context: providers.Provider = providers.ThreadLocalSingleton(dict)
-    shared_data: providers.Provider = providers.Singleton(dict)
-
-    async_state: providers.Provider = ContextVarProvider(dict)
-    async_context: providers.Provider = ContextVarProvider(dict)
+    context: providers.Provider = ContextVarProvider(dict)
 
 
 def custom_validate_call(

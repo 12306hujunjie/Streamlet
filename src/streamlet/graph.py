@@ -6,6 +6,7 @@
 import asyncio
 from typing import Any
 
+from .exceptions import LoopControlException
 from .executor import AsyncExecutor, SyncExecutor
 
 
@@ -147,9 +148,14 @@ class Repeat:
         for i in range(self.times):
             try:
                 last_result = ex.run(self.node, *args if i == 0 else (last_result,))
-            except Exception:
+            except Exception as e:
                 if self.stop_on_error:
-                    raise
+                    raise LoopControlException(
+                        message=f"repeat(stop_on_error=True) 在第 {i + 1} 次迭代失败: {e}",
+                        node_name=getattr(self.node, "name", None),
+                        iteration=i + 1,
+                        times=self.times,
+                    ) from e
         return last_result
 
     async def _async_run(self, *args: Any, **kwargs: Any) -> Any:
@@ -160,9 +166,14 @@ class Repeat:
                 last_result = await ex.arun(
                     self.node, *args if i == 0 else (last_result,)
                 )
-            except Exception:
+            except Exception as e:
                 if self.stop_on_error:
-                    raise
+                    raise LoopControlException(
+                        message=f"repeat(stop_on_error=True) 在第 {i + 1} 次迭代失败: {e}",
+                        node_name=getattr(self.node, "name", None),
+                        iteration=i + 1,
+                        times=self.times,
+                    ) from e
         return last_result
 
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.streamlet import node
+from src.streamlet import LoopControlException, node
 from tests.conftest import increment
 
 
@@ -52,8 +52,10 @@ class TestRepeatBasic:
 class TestRepeatErrorHandling:
     def test_stop_on_error_true(self):
         flow = failing_node.repeat(3, stop_on_error=True)
-        with pytest.raises(ValueError, match="iteration failed"):
+        with pytest.raises(LoopControlException) as exc_info:
             flow({"value": 0})
+        assert exc_info.value.node_name == "failing_node"
+        assert isinstance(exc_info.value.__cause__, ValueError)
 
     def test_stop_on_error_false_continues(self):
         flow = failing_node.repeat(3, stop_on_error=False)
@@ -99,5 +101,7 @@ class TestRepeatAsync:
             raise ValueError("async iteration failed")
 
         flow = async_failing.repeat(2, stop_on_error=True)
-        with pytest.raises(ValueError, match="iteration failed"):
+        with pytest.raises(LoopControlException) as exc_info:
             await flow({"value": 0})
+        assert exc_info.value.node_name == "async_failing"
+        assert isinstance(exc_info.value.__cause__, ValueError)

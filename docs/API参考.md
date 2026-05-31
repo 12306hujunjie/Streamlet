@@ -39,7 +39,7 @@
 并行扇出。source 执行后，每个 target 接收相同的 source 输出并行执行。返回 `dict[str, ParallelResult]`。
 
 `executor` 取值：
-- `"thread"` — 线程池（默认），适合 CPU 密集任务
+- `"thread"` — 线程池（默认），更适合 I/O 密集或阻塞型任务
 - `"async"` — 协程并发，适合 I/O 密集任务
 - `"auto"` — 根据节点类型自动选择
 
@@ -55,7 +55,7 @@
 
 条件分支。条件节点返回值作为路由键，匹配对应分支节点执行。
 
-分支节点通过依赖注入（`Provide[BaseFlowContext.state]`）获取数据，因为 `branch_on` 不向分支节点传递参数。
+分支节点通过依赖注入（推荐 `Provide[BaseFlowContext.current_state]`）获取数据，因为 `branch_on` 不向分支节点传递参数。
 
 ### `repeat(times: int, stop_on_error: bool = False) -> Node`
 
@@ -112,8 +112,10 @@ container.wire(modules=[__name__])
 | `shared_data` | `Singleton[dict]` | 全线程共享 |
 | `async_state` | `ContextVarProvider[dict]` | 协程安全状态 |
 | `async_context` | `ContextVarProvider[dict]` | 协程安全上下文 |
+| `current_state` | `Provider[dict]` | 推荐入口：sync→thread local；async→contextvar |
+| `current_context` | `Provider[dict]` | 推荐入口：sync→thread local；async→contextvar |
 
-节点通过 `Provide[BaseFlowContext.state]` 注入依赖：
+节点通过 `Provide[BaseFlowContext.current_state]`（推荐）注入依赖：
 
 ```python
 from streamlet import BaseFlowContext, node
@@ -122,7 +124,7 @@ from dependency_injector.wiring import Provide
 container = BaseFlowContext()
 
 @node
-def my_node(state: dict = Provide[BaseFlowContext.state]) -> dict:
+def my_node(state: dict = Provide[BaseFlowContext.current_state]) -> dict:
     return {"data": state["key"]}
 
 container.wire(modules=[__name__])  # 必须在 @node 定义之后调用

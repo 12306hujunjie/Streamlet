@@ -1,7 +1,7 @@
 """Tests for Node.branch_on() conditional branching.
 
 Branch nodes receive data through dependency injection: @node's inject decorator
-resolves Provide[BaseFlowContext.state] to actual values from the container.
+resolves Provide[BaseFlowContext.context] to actual values from the container.
 """
 
 import pytest
@@ -23,15 +23,15 @@ class TestBranchOnBoolean:
             return data["score"] >= 60
 
         @node
-        def handle_pass(state: dict = Provide[BaseFlowContext.state]) -> dict:
+        def handle_pass(state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"status": "passed", "score": state["score"]}
 
         @node
-        def handle_fail(state: dict = Provide[BaseFlowContext.state]) -> dict:
+        def handle_fail(state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"status": "failed", "score": state["score"]}
 
         container.wire(modules=[__name__])
-        container.state()["score"] = 75
+        container.context()["score"] = 75
 
         flow = check_score.branch_on({True: handle_pass, False: handle_fail})
         result = flow({"score": 75})
@@ -45,15 +45,15 @@ class TestBranchOnBoolean:
             return data["score"] >= 60
 
         @node
-        def handle_pass(state: dict = Provide[BaseFlowContext.state]) -> dict:
+        def handle_pass(state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"status": "passed", "score": state["score"]}
 
         @node
-        def handle_fail(state: dict = Provide[BaseFlowContext.state]) -> dict:
+        def handle_fail(state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"status": "failed", "score": state["score"]}
 
         container.wire(modules=[__name__])
-        container.state()["score"] = 45
+        container.context()["score"] = 45
 
         flow = check_score.branch_on({True: handle_pass, False: handle_fail})
         result = flow({"score": 45})
@@ -67,11 +67,11 @@ class TestBranchOnBoolean:
             return data["score"] >= 60
 
         @node
-        def handle_pass(state: dict = Provide[BaseFlowContext.state]) -> dict:
+        def handle_pass(state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"status": "passed", "score": state["score"]}
 
         container.wire(modules=[__name__])
-        container.state()["score"] = 75
+        container.context()["score"] = 75
 
         flow = check_score.branch_on({True: handle_pass})
         result = flow({"score": 75})
@@ -85,7 +85,7 @@ class TestBranchOnBoolean:
             raise ValueError("condition failed")
 
         @node
-        def handle(state: dict = Provide[BaseFlowContext.state]) -> dict:
+        def handle(state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"status": "ok"}
 
         container.wire(modules=[__name__])
@@ -102,7 +102,7 @@ class TestBranchOnBoolean:
             return "fail"
 
         @node
-        def handle_pass(state: dict = Provide[BaseFlowContext.state]) -> dict:
+        def handle_pass(state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"status": "passed"}
 
         container.wire(modules=[__name__])
@@ -119,7 +119,7 @@ class TestBranchOnBoolean:
             return True
 
         @node
-        def handle(state: dict = Provide[BaseFlowContext.state]) -> dict:
+        def handle(state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"status": "ok"}
 
         container.wire(modules=[__name__])
@@ -136,15 +136,15 @@ class TestBranchOnBoolean:
             return data["score"] >= 60
 
         @node
-        async def async_handle(state: dict = Provide[BaseFlowContext.state]) -> dict:
+        async def async_handle(state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"status": "async_passed", "score": state["score"]}
 
         @node
-        def sync_handle(state: dict = Provide[BaseFlowContext.state]) -> dict:
+        def sync_handle(state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"status": "failed", "score": state["score"]}
 
         container.wire(modules=[__name__])
-        container.state()["score"] = 80
+        container.context()["score"] = 80
 
         flow = check_score.branch_on({True: async_handle, False: sync_handle})
         result = await flow({"score": 80})

@@ -2,7 +2,12 @@
 
 import pytest
 
-from src.streamlet import RetryConfig, UserBusinessException, node
+from src.streamlet import (
+    NodeRetryExhaustedException,
+    RetryConfig,
+    UserBusinessException,
+    node,
+)
 
 
 class TestRetryConfig:
@@ -113,8 +118,11 @@ class TestNodeWithRetry:
         def flaky_node(x: int) -> int:
             raise TempError("always fails")
 
-        with pytest.raises(TempError):
+        with pytest.raises(NodeRetryExhaustedException) as exc_info:
             flaky_node(5)
+        assert exc_info.value.node_name == "flaky_node"
+        assert exc_info.value.retry_count == 1
+        assert isinstance(exc_info.value.last_exception, TempError)
 
     def test_node_without_retry(self):
         @node(enable_retry=False)

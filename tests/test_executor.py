@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+from src.streamlet import BaseFlowContext
 from src.streamlet.executor import AsyncExecutor, SyncExecutor
 
 # ============================================================
@@ -265,3 +266,86 @@ class TestContextVarPropagation:
 
         results = await ex.agather([(node, 1)])
         assert results["async_ctx_reader"].result == "parent_async_value"
+
+
+# ============================================================
+# ContextVarProvider 隔离测试——验证 capture/apply 机制
+# ============================================================
+
+
+class TestSyncExecutorContextIsolation:
+    """SyncExecutor.gather 中 ContextVarProvider 的线程池 task 间隔离。
+
+    关键点：
+    - contextvars.copy() 是浅拷贝：ContextVar 的值（dict 对象）在 task 间共享引用
+    - capture_context() + apply_context() 为每个 task 浅拷贝 dict，确保隔离
+    """
+
+    def test_pool_tasks_have_independent_context_dicts(self):
+        """线程池中不同 task 修改 context dict 不互相污染。"""
+        container = BaseFlowContext()
+        container.context()["shared"] = "parent"
+
+        def mutate_context(task_id: str) -> tuple[str, list[str]]:
+            ctx = container.context()
+            parent_val = ctx.get("shared", None)
+            ctx[f"task_{task_id}"] = task_id
+            return (parent_val, sorted(ctx.keys()))
+
+        ex = SyncExecutor(max_workers=2)
+        node_a = StubNode("a", lambda x: mutate_context("a"))
+        node_b = StubNode("b", lambda x: mutate_context("b"))
+
+        results = ex.gather([(node_a, 1), (node_b, 1)])
+
+        parent_a, keys_a = results["a"].result
+        parent_b, keys_b = results["b"].result
+
+        # 两个 task 都应该看到 parent 预设的值
+        assert parent_a == "parent"
+        assert parent_b == "parent"
+        # task_a 不应看到 task_b 写入的 key
+        assert "task_b" not in keys_a
+        # task_b 不应看到 task_a 写入的 key
+        assert "task_a" not in keys_b
+        # 各自看到自己的 key
+        assert "task_a" in keys_a
+        assert "task_b" in keys_b
+
+
+class TestAsyncExecutorContextIsolation:
+    """AsyncExecutor.agather 中 ContextVarProvider 的协程 task 间隔离。
+
+    关键点：
+    - asyncio.gather 创建的 Task 自动 copy_context()
+    - 但 dict 值仍是共享引用，需要 capture/apply 做 dict 浅拷贝
+    """
+
+    @pytest.mark.asyncio
+    async def test_async_tasks_have_independent_context_dicts(self):
+        """asyncio.gather 中不同 task 修改 context dict 不互相污染。"""
+        container = BaseFlowContext()
+        container.context()["shared"] = "parent"
+
+        async def mutate_context(task_id: str) -> tuple[str, list[str]]:
+            await asyncio.sleep(0.01)
+            ctx = container.context()
+            parent_val = ctx.get("shared", None)
+            ctx[f"task_{task_id}"] = task_id
+            return (parent_val, sorted(ctx.keys()))
+
+        ex = AsyncExecutor()
+        node_a = StubNode("a", lambda x: mutate_context("a"), is_async=True)
+        node_b = StubNode("b", lambda x: mutate_context("b"), is_async=True)
+
+        results = await ex.agather([(node_a, 1), (node_b, 1)])
+
+        parent_a, keys_a = results["a"].result
+        parent_b, keys_b = results["b"].result
+
+        assert parent_a == "parent"
+        assert parent_b == "parent"
+        assert "task_b" not in keys_a
+        assert "task_a" not in keys_b
+        assert "task_a" in keys_a
+        assert "task_b" in keys_b

@@ -5,6 +5,7 @@ import inspect
 
 import pytest
 
+from src.streamlet import LoopControlException
 from src.streamlet.graph import (
     Conditional,
     FanIn,
@@ -248,8 +249,10 @@ class TestRepeat:
         node = StubNode("failer", fail)
         r = Repeat(node, times=3, stop_on_error=True)
 
-        with pytest.raises(ValueError, match="fail"):
+        with pytest.raises(LoopControlException) as exc_info:
             r(0)
+        assert exc_info.value.node_name == "failer"
+        assert isinstance(exc_info.value.__cause__, ValueError)
 
     def test_continue_on_error(self):
         counter = [0]

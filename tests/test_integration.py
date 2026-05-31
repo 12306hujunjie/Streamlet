@@ -93,22 +93,22 @@ class TestConditionalWorkflow:
             return "high" if data["score"] >= 80 else "low"
 
         @node
-        def handle_high(state: dict = Provide[BaseFlowContext.state]) -> dict:
+        def handle_high(state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"level": "A", "original": state["score"]}
 
         @node
-        def handle_low(state: dict = Provide[BaseFlowContext.state]) -> dict:
+        def handle_low(state: dict = Provide[BaseFlowContext.context]) -> dict:
             return {"level": "B", "original": state["score"]}
 
         container.wire(modules=[__name__])
 
         workflow = classify.branch_on({"high": handle_high, "low": handle_low})
 
-        container.state()["score"] = 90
+        container.context()["score"] = 90
         high_result = workflow({"score": 90})
         assert high_result["level"] == "A"
 
-        container.state()["score"] = 50
+        container.context()["score"] = 50
         low_result = workflow({"score": 50})
         assert low_result["level"] == "B"
 
@@ -135,7 +135,9 @@ class TestConcurrentSafety:
         container = BaseFlowContext()
 
         @node
-        def stateful_node(x: int, state: dict = Provide[BaseFlowContext.state]) -> int:
+        def stateful_node(
+            x: int, state: dict = Provide[BaseFlowContext.context]
+        ) -> int:
             state[f"key_{x}"] = x
             return len(state)
 

@@ -113,15 +113,15 @@ def evaluate(data: dict) -> str:
     return "pass" if data["score"] >= 60 else "fail"
 
 @node
-def handle_pass(state: dict = Provide[BaseFlowContext.state]) -> dict:
+def handle_pass(state: dict = Provide[BaseFlowContext.current_state]) -> dict:
     return {"result": "pass", "score": state["score"]}
 
 @node
-def handle_fail(state: dict = Provide[BaseFlowContext.state]) -> dict:
+def handle_fail(state: dict = Provide[BaseFlowContext.current_state]) -> dict:
     return {"result": "fail", "score": state["score"]}
 
 container.wire(modules=[__name__])
-container.state()["score"] = 75
+container.current_state()["score"] = 75
 
 flow = evaluate.branch_on({"pass": handle_pass, "fail": handle_fail})
 print(flow({"score": 75}))  # {"result": "pass", "score": 75}

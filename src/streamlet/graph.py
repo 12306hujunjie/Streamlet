@@ -4,10 +4,13 @@
 """
 
 import asyncio
+import logging
 from typing import Any
 
 from .exceptions import LoopControlException
 from .executor import AsyncExecutor, SyncExecutor
+
+logger = logging.getLogger("streamlet")
 
 
 def _maybe_await(coro: Any) -> Any:
@@ -156,6 +159,12 @@ class Repeat:
                         iteration=i + 1,
                         times=self.times,
                     ) from e
+                logger.warning(
+                    "repeat 第 %d/%d 次迭代失败（stop_on_error=False，继续循环）: %s",
+                    i + 1,
+                    self.times,
+                    e,
+                )
         return last_result
 
     async def _async_run(self, *args: Any, **kwargs: Any) -> Any:
@@ -174,6 +183,12 @@ class Repeat:
                         iteration=i + 1,
                         times=self.times,
                     ) from e
+                logger.warning(
+                    "repeat 第 %d/%d 次迭代失败（stop_on_error=False，继续循环）: %s",
+                    i + 1,
+                    self.times,
+                    e,
+                )
         return last_result
 
 

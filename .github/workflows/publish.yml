@@ -54,9 +54,7 @@ jobs:
         run: pdm publish --repository testpypi --username __token__ --password ${{ secrets.TEST_PYPI_API_TOKEN }}
 
       - name: Publish
-        if: |
-          github.event_name == 'release' ||
-          (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'pypi'
         run: pdm publish --username __token__ --password ${{ secrets.PYPI_API_TOKEN }}
 
       - name: Upload artifacts to Release

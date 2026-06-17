@@ -190,3 +190,5 @@ hive-mind-prompt-*.txt
 .superpowers
 skills-lock.json
 .agents
+.codex/
+AGENTS.md

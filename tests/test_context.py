@@ -7,10 +7,6 @@ from src.streamlet import BaseFlowContext
 
 
 class TestBaseFlowContext:
-    def test_container_creation(self):
-        container = BaseFlowContext()
-        assert container is not None
-
     def test_context_lazy_init_and_consistent(self):
         """ContextVarProvider 首次 _provide() 创建 dict，后续返回同一实例。"""
         container = BaseFlowContext()

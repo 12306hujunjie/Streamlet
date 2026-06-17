@@ -9,7 +9,7 @@ import logging
 import weakref
 from collections.abc import Callable
 from contextvars import ContextVar
-from typing import Any
+from typing import Any, cast
 
 from dependency_injector import containers, providers
 from pydantic import ConfigDict, TypeAdapter, ValidationError, validate_call
@@ -39,7 +39,7 @@ class ContextVarProvider(providers.Provider):
             memo = {}
         copy_obj = memo.get(id(self))
         if copy_obj is not None:
-            return copy_obj
+            return cast("ContextVarProvider", copy_obj)
         copy_obj = ContextVarProvider(self._default_factory)
         memo[id(self)] = copy_obj
         return copy_obj

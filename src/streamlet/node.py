@@ -4,8 +4,10 @@ import asyncio
 import functools
 import inspect
 from collections.abc import Callable
-from typing import Any, overload
+from typing import Annotated, Any, get_args, get_origin, overload
 
+from dependency_injector.wiring import Provide as _DIProvide
+from dependency_injector.wiring import Provider as _DIProvider
 from dependency_injector.wiring import inject as _di_inject
 from pydantic import ConfigDict
 
@@ -117,6 +119,25 @@ class Node:
         return f"Node(name='{self.name}')"
 
 
+def _is_di_marker(value: Any) -> bool:
+    return value.__class__ in {_DIProvide, _DIProvider}
+
+
+def _annotation_has_di_marker(annotation: Any) -> bool:
+    return get_origin(annotation) is Annotated and any(
+        _is_di_marker(metadata) for metadata in get_args(annotation)[1:]
+    )
+
+
+def _has_di_marker(func: Callable[..., Any]) -> bool:
+    """Return whether the function signature asks dependency-injector to resolve DI."""
+
+    return any(
+        _is_di_marker(param.default) or _annotation_has_di_marker(param.annotation)
+        for param in inspect.signature(func).parameters.values()
+    )
+
+
 # ============================================================
 # @node 装饰器
 # ============================================================
@@ -170,7 +191,8 @@ def node_decorator(
         ]
         if enable_retry:
             decorators.append(retry_decorator(config=config, node_name=node_name))
-        decorators.append(_di_inject)
+        if _has_di_marker(f):
+            decorators.append(_di_inject)
 
         decorated_func = functools.reduce(lambda func, deco: deco(func), decorators, f)
         return Node(func=decorated_func, name=node_name, is_async=is_original_async)

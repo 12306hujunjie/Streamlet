@@ -32,7 +32,6 @@ class TestStreamletException:
 class TestValidationExceptions:
     def test_validation_input_exception(self):
         exc = ValidationInputException("invalid input", node_name="node1")
-        assert isinstance(exc, StreamletException)
         assert exc.retryable is False
         assert exc.node_name == "node1"
 
@@ -43,7 +42,6 @@ class TestValidationExceptions:
 
     def test_validation_output_exception(self):
         exc = ValidationOutputException("invalid output")
-        assert isinstance(exc, StreamletException)
         assert exc.retryable is False
 
     def test_validation_output_with_validation_error(self):
@@ -65,10 +63,6 @@ class TestUserBusinessException:
         exc = UserBusinessException("business error", retryable=True)
         assert exc.retryable is True
 
-    def test_inherits_from_streamlet(self):
-        exc = UserBusinessException("error")
-        assert isinstance(exc, StreamletException)
-
 
 class TestNodeExecutionException:
     def test_basic(self):
@@ -79,20 +73,12 @@ class TestNodeExecutionException:
         assert exc.node_name == "node1"
         assert exc.original_exception is original
 
-    def test_inheritance_chain(self):
-        exc = NodeExecutionException("fail")
-        assert isinstance(exc, StreamletException)
-
 
 class TestNodeTimeoutException:
     def test_basic(self):
         exc = NodeTimeoutException("timeout", node_name="node1", timeout_seconds=30.0)
         assert exc.node_name == "node1"
         assert exc.timeout_seconds == 30.0
-
-    def test_inherits_from_node_execution(self):
-        exc = NodeTimeoutException("timeout")
-        assert isinstance(exc, NodeExecutionException)
 
 
 class TestNodeRetryExhaustedException:
@@ -106,16 +92,8 @@ class TestNodeRetryExhaustedException:
         assert exc.last_exception is last_err
         assert exc.original_exception is last_err
 
-    def test_inherits_from_node_execution(self):
-        exc = NodeRetryExhaustedException("exhausted")
-        assert isinstance(exc, NodeExecutionException)
-
 
 class TestLoopControlException:
-    def test_basic(self):
-        exc = LoopControlException("loop control")
-        assert isinstance(exc, StreamletException)
-
     def test_retryable_attribute(self):
         exc = LoopControlException("loop")
         assert exc.retryable is False

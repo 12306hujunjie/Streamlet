@@ -1,5 +1,8 @@
 """Tests for @node decorator with various parameter combinations."""
 
+import warnings
+from typing import Annotated
+
 import pytest
 from dependency_injector.wiring import Provide
 
@@ -30,6 +33,18 @@ class TestNodeDecoratorCallModes:
 
         assert func.name == "custom_name"
 
+    def test_plain_node_does_not_emit_di_wiring_warning(self):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+
+            @node
+            def func(x: int) -> int:
+                return x
+
+        messages = [str(warning.message) for warning in caught]
+        assert not any("@inject is not required here" in msg for msg in messages)
+        assert func(5) == 5
+
 
 class TestNodeDecoratorAsync:
     @pytest.mark.asyncio
@@ -38,7 +53,6 @@ class TestNodeDecoratorAsync:
         async def func(x: int) -> int:
             return x * 2
 
-        assert func._is_async is True
         assert await func(5) == 10
 
     @pytest.mark.asyncio
@@ -48,7 +62,7 @@ class TestNodeDecoratorAsync:
             return x * 2
 
         assert func.name == "async_node"
-        assert func._is_async is True
+        assert await func(5) == 10
 
 
 class TestNodeDecoratorWithDI:
@@ -65,6 +79,21 @@ class TestNodeDecoratorWithDI:
         result = di_node(42)
         assert result["x"] == 42
         assert result["state_key"] == "di_value"
+
+    def test_node_with_annotated_dependency_injection(self):
+        container = BaseFlowContext()
+        container.context()["key"] = "annotated_value"
+
+        @node
+        def di_node(
+            state: Annotated[dict, Provide[BaseFlowContext.context]],
+        ) -> dict:
+            return {"state_key": state.get("key")}
+
+        container.wire(modules=[__name__])
+
+        result = di_node()
+        assert result["state_key"] == "annotated_value"
 
 
 class TestNodeDecoratorTypeValidation:

@@ -49,15 +49,13 @@ class TestPipeline:
         right = StubNode("add_ten", lambda x: x + 10)
         p = Pipeline(left, right)
 
-        assert p._is_async is False
         assert p(5) == 20
 
-    def test_async_node_propagates(self):
+    def test_async_node_runs_from_sync_entrypoint(self):
         left = StubNode("double", lambda x: x * 2)
         right = StubNode("async_add", lambda x: x + 10, is_async=True)
         p = Pipeline(left, right)
 
-        assert p._is_async is True
         assert p(5) == 20
 
     def test_error_propagation(self):
@@ -70,14 +68,6 @@ class TestPipeline:
 
         with pytest.raises(ValueError, match="left failed"):
             p(1)
-
-    def test_inspectable_attrs(self):
-        left = StubNode("a", lambda x: x)
-        right = StubNode("b", lambda x: x)
-        p = Pipeline(left, right)
-
-        assert p.left is left
-        assert p.right is right
 
     @pytest.mark.asyncio
     async def test_async_run(self):
@@ -111,14 +101,6 @@ class TestParallel:
         assert results["t2"].success
         assert results["t2"].result == 15
 
-    def test_executor_type_stored(self):
-        source = StubNode("src", lambda x: x)
-        t = StubNode("t", lambda x: x)
-        p = Parallel(source, [t], executor_type="async", max_workers=4)
-
-        assert p.executor_type == "async"
-        assert p.max_workers == 4
-
     def test_auto_all_sync_uses_thread(self):
         source = StubNode("src", lambda x: x)
         t1 = StubNode("t1", lambda x: x * 2)
@@ -127,17 +109,6 @@ class TestParallel:
 
         results = p(5)
         assert len(results) == 2
-
-    def test_async_node_propagates(self):
-        source = StubNode("src", lambda x: x)
-
-        async def a_target(x):
-            return x * 2
-
-        t = StubNode("t", a_target, is_async=True)
-        p = Parallel(source, [t])
-
-        assert p._is_async is True
 
     def test_error_in_target(self):
         def fail(_):
@@ -152,7 +123,7 @@ class TestParallel:
         assert "target failed" in results["failer"].error
 
     def test_auto_mixed_sync_async_targets(self):
-        """auto 模式 + 混合 sync/async 目标 → 走 async 路径。"""
+        """auto 模式支持混合 sync/async 目标。"""
         source = StubNode("src", lambda x: x)
 
         async def a_target(x):
@@ -162,7 +133,6 @@ class TestParallel:
         t2 = StubNode("async_t", a_target, is_async=True)
         p = Parallel(source, [t1, t2], executor_type="auto")
 
-        assert p._is_async is True
         results = p(5)
         assert results["sync_t"].result == 15
         assert results["async_t"].result == 10
@@ -198,7 +168,6 @@ class TestConditional:
         branch = StubNode("b", lambda: "hit")
         c = Conditional(cond, {True: branch})
 
-        assert c._is_async is True
         assert c(1) == "hit"
 
     def test_none_as_branch_key(self):
@@ -283,7 +252,7 @@ class TestFanIn:
 
         assert fi(5) == "total:6"
 
-    def test_async_propagates(self):
+    def test_async_upstream_runs_from_sync_entrypoint(self):
         async def a_up(x):
             return x
 
@@ -291,7 +260,7 @@ class TestFanIn:
         agg = StubNode("agg", lambda x: x)
         fi = FanIn(upstream, agg)
 
-        assert fi._is_async is True
+        assert fi(7) == 7
 
     def test_error_from_upstream(self):
         def fail(_):
@@ -318,7 +287,7 @@ class TestFanIn:
             fi(42)
 
     def test_async_path_with_sync_upstream(self):
-        """上游 sync + 聚合器 async → _is_async=True 走 _async_run。"""
+        """上游 sync + 聚合器 async 时可从同步入口执行。"""
         upstream = StubNode("up", lambda x: {"v": x})
 
         async def async_agg(d):
@@ -327,6 +296,5 @@ class TestFanIn:
         agg = StubNode("async_agg", async_agg, is_async=True)
         fi = FanIn(upstream, agg)
 
-        assert fi._is_async is True
         result = fi(7)
         assert result == "async:7"

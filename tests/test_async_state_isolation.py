@@ -9,7 +9,7 @@ from src.streamlet import BaseFlowContext, node
 
 
 @pytest.mark.asyncio
-async def test_async_fan_out_isolates_current_state_between_branches():
+async def test_async_fan_out_isolates_context_between_branches():
     """fan_out_to(executor='async') 下，每个分支应拥有独立的 context 副本。
 
     关键点：

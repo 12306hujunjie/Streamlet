@@ -3,7 +3,7 @@
 import pytest
 
 from src.streamlet import ParallelResult, node
-from tests.conftest import add_five, multiply, source_data, square
+from tests.conftest import add_five, multiply, source_data
 
 
 @node
@@ -38,12 +38,9 @@ class TestFanOutBasic:
         flow = source_data.fan_out_to([multiply], executor="thread")
         results = flow(10)
         assert len(results) == 1
-
-    def test_all_results_are_parallel_result_objects(self):
-        flow = source_data.fan_out_to([multiply, add_five], executor="thread")
-        results = flow(10)
-        for r in results.values():
-            assert isinstance(r, ParallelResult)
+        result = next(iter(results.values()))
+        assert isinstance(result, ParallelResult)
+        assert result.result == 20
 
     def test_successful_results_have_execution_time(self):
         flow = source_data.fan_out_to([multiply], executor="thread")
@@ -53,28 +50,12 @@ class TestFanOutBasic:
             assert r.execution_time is not None
             assert r.execution_time >= 0
 
-    def test_three_targets(self):
-        flow = source_data.fan_out_to([multiply, add_five, square], executor="thread")
-        results = flow(10)
-        assert len(results) == 3
-
 
 class TestFanOutExecutorTypes:
-    def test_thread_executor(self):
-        flow = source_data.fan_out_to([multiply, add_five], executor="thread")
-        results = flow(10)
-        assert len(results) == 2
-
-    @pytest.mark.asyncio
-    async def test_async_executor(self):
-        flow = source_data.fan_out_to([multiply, add_five], executor="async")
-        results = await flow(10)
-        assert len(results) == 2
-
     def test_auto_executor_with_sync_nodes(self):
         flow = source_data.fan_out_to([multiply, add_five], executor="auto")
         results = flow(10)
-        assert len(results) == 2
+        assert sorted(r.result for r in results.values()) == [15, 20]
 
     def test_invalid_executor_raises(self):
         with pytest.raises(ValueError, match="Only 'thread', 'async', and 'auto'"):

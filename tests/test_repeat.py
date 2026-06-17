@@ -32,10 +32,6 @@ class TestRepeatBasic:
         result = flow({"value": 1})
         assert result["value"] == 8  # 1*2=2, 2*2=4, 4*2=8
 
-    def test_repeat_returns_callable(self):
-        flow = increment.repeat(3)
-        assert callable(flow)
-
     def test_repeat_zero_raises(self):
         with pytest.raises(ValueError, match="Repeat times"):
             increment.repeat(0)

@@ -113,15 +113,15 @@ def evaluate(data: dict) -> str:
     return "pass" if data["score"] >= 60 else "fail"
 
 @node
-def handle_pass(state: dict = Provide[BaseFlowContext.current_state]) -> dict:
+def handle_pass(state: dict = Provide[BaseFlowContext.context]) -> dict:
     return {"result": "pass", "score": state["score"]}
 
 @node
-def handle_fail(state: dict = Provide[BaseFlowContext.current_state]) -> dict:
+def handle_fail(state: dict = Provide[BaseFlowContext.context]) -> dict:
     return {"result": "fail", "score": state["score"]}
 
 container.wire(modules=[__name__])
-container.current_state()["score"] = 75
+container.context()["score"] = 75
 
 flow = evaluate.branch_on({"pass": handle_pass, "fail": handle_fail})
 print(flow({"score": 75}))  # {"result": "pass", "score": 75}
@@ -155,7 +155,7 @@ pdm run mypy src/streamlet/                     # 类型检查
 ## 技术栈
 
 - **Python 3.10+**
-- **dependency-injector** — 依赖注入与线程安全状态管理
+- **dependency-injector** — 依赖注入与 ContextVar 隔离状态管理
 - **pydantic v2** — 类型校验
 
 核心模块：`asyncio` | `threading` | `concurrent.futures`

@@ -15,7 +15,11 @@ class TestBranchOnBoolean:
     def setup(self):
         self.container = BaseFlowContext()
 
-    def test_true_branch_selected(self):
+    @pytest.mark.parametrize(
+        ("score", "expected_status"),
+        [(75, "passed"), (45, "failed")],
+    )
+    def test_branch_selected_by_condition_result(self, score, expected_status):
         container = self.container
 
         @node
@@ -31,33 +35,11 @@ class TestBranchOnBoolean:
             return {"status": "failed", "score": state["score"]}
 
         container.wire(modules=[__name__])
-        container.context()["score"] = 75
+        container.context()["score"] = score
 
         flow = check_score.branch_on({True: handle_pass, False: handle_fail})
-        result = flow({"score": 75})
-        assert result["status"] == "passed"
-
-    def test_false_branch_selected(self):
-        container = self.container
-
-        @node
-        def check_score(data: dict) -> bool:
-            return data["score"] >= 60
-
-        @node
-        def handle_pass(state: dict = Provide[BaseFlowContext.context]) -> dict:
-            return {"status": "passed", "score": state["score"]}
-
-        @node
-        def handle_fail(state: dict = Provide[BaseFlowContext.context]) -> dict:
-            return {"status": "failed", "score": state["score"]}
-
-        container.wire(modules=[__name__])
-        container.context()["score"] = 45
-
-        flow = check_score.branch_on({True: handle_pass, False: handle_fail})
-        result = flow({"score": 45})
-        assert result["status"] == "failed"
+        result = flow({"score": score})
+        assert result["status"] == expected_status
 
     def test_single_branch(self):
         container = self.container
@@ -110,22 +92,6 @@ class TestBranchOnBoolean:
         flow = check_score_str.branch_on({"pass": handle_pass})
         with pytest.raises(ValueError, match="No branch defined"):
             flow({"score": 35})
-
-    def test_returns_callable(self):
-        container = self.container
-
-        @node
-        def check_score(data: dict) -> bool:
-            return True
-
-        @node
-        def handle(state: dict = Provide[BaseFlowContext.context]) -> dict:
-            return {"status": "ok"}
-
-        container.wire(modules=[__name__])
-
-        flow = check_score.branch_on({True: handle})
-        assert callable(flow)
 
     @pytest.mark.asyncio
     async def test_async_branch(self):

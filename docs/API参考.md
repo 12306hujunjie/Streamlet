@@ -14,7 +14,7 @@
 )
 ```
 
-将函数转为 `Node` 实例，内置依赖注入、pydantic 类型校验和可选重试。
+将函数转为 `Node` 实例，内置 pydantic 类型校验、按需依赖注入和可选重试。
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
@@ -34,7 +34,7 @@
 
 顺序连接。前一个节点的输出作为后一个节点的输入。
 
-### `fan_out_to(targets: list[Node], executor: str = "thread", max_workers: int = None) -> Node`
+### `fan_out_to(nodes: list[Node], executor: str = "thread", max_workers: int = None) -> Node`
 
 并行扇出。source 执行后，每个 target 接收相同的 source 输出并行执行。返回 `dict[str, ParallelResult]`。
 
@@ -55,7 +55,7 @@
 
 条件分支。条件节点返回值作为路由键，匹配对应分支节点执行。
 
-分支节点通过依赖注入（推荐 `Provide[BaseFlowContext.current_state]`）获取数据，因为 `branch_on` 不向分支节点传递参数。
+分支节点可通过依赖注入读取 `BaseFlowContext.context`，因为 `branch_on` 不向分支节点传递参数。
 
 ### `repeat(times: int, stop_on_error: bool = False) -> Node`
 
@@ -107,15 +107,9 @@ container.wire(modules=[__name__])
 
 | 提供者 | 类型 | 说明 |
 |--------|------|------|
-| `state` | `ThreadLocalSingleton[dict]` | 线程隔离状态 |
-| `context` | `ThreadLocalSingleton[dict]` | 线程隔离上下文 |
-| `shared_data` | `Singleton[dict]` | 全线程共享 |
-| `async_state` | `ContextVarProvider[dict]` | 协程安全状态 |
-| `async_context` | `ContextVarProvider[dict]` | 协程安全上下文 |
-| `current_state` | `Provider[dict]` | 推荐入口：sync→thread local；async→contextvar |
-| `current_context` | `Provider[dict]` | 推荐入口：sync→thread local；async→contextvar |
+| `context` | `ContextVarProvider[dict]` | 执行上下文；线程/协程隔离，并在 fan-out 分支中复制父上下文 |
 
-节点通过 `Provide[BaseFlowContext.current_state]`（推荐）注入依赖：
+节点通过 `Provide[BaseFlowContext.context]` 注入依赖：
 
 ```python
 from streamlet import BaseFlowContext, node
@@ -124,8 +118,8 @@ from dependency_injector.wiring import Provide
 container = BaseFlowContext()
 
 @node
-def my_node(state: dict = Provide[BaseFlowContext.current_state]) -> dict:
-    return {"data": state["key"]}
+def my_node(context: dict = Provide[BaseFlowContext.context]) -> dict:
+    return {"data": context["key"]}
 
 container.wire(modules=[__name__])  # 必须在 @node 定义之后调用
 ```
@@ -140,7 +134,7 @@ custom_validate_call(
 ) -> Callable
 ```
 
-验证装饰器。输入校验失败抛出 `ValidationInputException`，返回值校验失败抛出 `ValidationOutputException`。自动识别 `Provide` 参数并跳过其默认值填充。
+验证装饰器。输入校验失败抛出 `ValidationInputException`，返回值校验失败抛出 `ValidationOutputException`。依赖注入由 `@node` 在函数签名包含 `Provide[...]` / `Provider[...]` 默认值或 `Annotated[..., Provide[...]]` 元数据时按需启用；单独使用 `custom_validate_call` 不解析依赖。
 
 ## retry_decorator
 
@@ -161,9 +155,9 @@ retry_decorator(
 | `ValidationInputException` | `StreamletException` | `False` | 输入参数校验失败 |
 | `ValidationOutputException` | `StreamletException` | `False` | 返回值校验失败 |
 | `UserBusinessException` | `StreamletException` | `True` | 用户业务异常，可覆盖 |
-| `NodeExecutionException` | `StreamletException` | - | 节点执行失败 |
-| `NodeTimeoutException` | `NodeExecutionException` | - | 执行超时 |
-| `NodeRetryExhaustedException` | `NodeExecutionException` | - | 重试耗尽 |
-| `LoopControlException` | `StreamletException` | - | `repeat(stop_on_error=True)` 触发 |
+| `NodeExecutionException` | `StreamletException` | `False` | 节点执行失败 |
+| `NodeTimeoutException` | `NodeExecutionException` | `False` | 执行超时 |
+| `NodeRetryExhaustedException` | `NodeExecutionException` | `False` | 重试耗尽 |
+| `LoopControlException` | `StreamletException` | `False` | `repeat(stop_on_error=True)` 触发 |
 
 `StreamletException` 构造：`__init__(message: str, node_name: str | None = None, **kwargs)`。`kwargs` 存入 `context` 字典。

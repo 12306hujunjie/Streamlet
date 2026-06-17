@@ -13,27 +13,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目架构
 
-### 模块划分（共 7 个源文件，~940 行）
+### 模块划分（共 7 个源文件，~1040 行）
 
 | 模块 | 行数 | 职责 |
 |---|---|---|
 | `src/streamlet/__init__.py` | 37 | 公共 API 重导出中枢（14 个公开符号） |
-| `src/streamlet/node.py` | 182 | `Node` 类 + `@node` 装饰器 |
-| `src/streamlet/graph.py` | 192 | 5 个内部组合类（Pipeline/Parallel/Conditional/Repeat/FanIn） |
-| `src/streamlet/executor.py` | 142 | `SyncExecutor` / `AsyncExecutor` + `ParallelResult` |
-| `src/streamlet/context.py` | 116 | `BaseFlowContext` DI 容器 + `custom_validate_call` |
-| `src/streamlet/retry.py` | 142 | `RetryConfig` + `retry_decorator` |
-| `src/streamlet/exceptions.py` | 118 | 8 个异常类 |
+| `src/streamlet/node.py` | 203 | `Node` 类 + `@node` 装饰器 |
+| `src/streamlet/graph.py` | 217 | 5 个内部组合类（Pipeline/Parallel/Conditional/Repeat/FanIn） |
+| `src/streamlet/executor.py` | 162 | `SyncExecutor` / `AsyncExecutor` + `ParallelResult` |
+| `src/streamlet/context.py` | 154 | `BaseFlowContext` DI 容器 + `custom_validate_call` |
+| `src/streamlet/retry.py` | 153 | `RetryConfig` + `retry_decorator` |
+| `src/streamlet/exceptions.py` | 117 | 8 个异常类 |
 
 ### 核心概念
 
 - **Node类**: 执行图的基本单元，支持 fluent interface 链式调用，包装原始函数或内部 Graph 对象
-- **@node装饰器**: 构建装饰器链 `validate → retry → di_inject`，通过 `functools.reduce` 组合
+- **@node装饰器**: 构建装饰器链 `validate → retry → 按需 di_inject`，通过 `functools.reduce` 组合
 - **流式接口**: `.then()`, `.fan_out_to()`, `.fan_in()`, `.branch_on()`, `.repeat()` 创建内部 Graph 对象后重新包装为 Node
 - **5 个内部组合类**: 用户不直接实例化，由 Node fluent 方法创建。每个类实现 `_sync_run` / `_async_run`，通过 `_is_async` 标志分发
 - **双执行器模式**: `SyncExecutor`（ThreadPoolExecutor）+ `AsyncExecutor`（asyncio.gather），共享 `run/gather` 概念接口
 - **智能异步系统**: `_is_async` 沿组合链向上传播（OR 逻辑），自动选择同步/异步执行路径
-- **依赖注入**: `BaseFlowContext` 提供 5 个 provider：`state`/`context`（ThreadLocalSingleton）、`shared_data`（Singleton）、`async_state`/`async_context`（ContextVarProvider）
+- **依赖注入**: `BaseFlowContext` 提供单一 `context` provider（`ContextVarProvider[dict]`），默认线程/协程隔离；fan-out 分支从父上下文复制浅拷贝
 - **重试机制**: `RetryConfig` 配置指数退避，通过 `retryable` 类属性协议判断异常是否可重试
 
 ### 核心类和方法发现指南
@@ -106,15 +106,15 @@ pdm run bandit -r src/
 ### 架构约束
 - **模块职责单一**: 每个模块一个清晰职责（node/graph/executor/context/retry/exceptions），`__init__.py` 纯重导出
 - **内部/外部分离**: Graph 内部类（Pipeline/Parallel/Conditional/Repeat/FanIn）不对外暴露，由 Node fluent 方法创建
-- **线程安全**: ThreadLocalSingleton（线程隔离）+ ContextVarProvider（协程安全）+ `contextvars.copy_context()` 传播
+- **线程/协程隔离**: `ContextVarProvider` + `capture_context()` / `apply_context()`；fan-out 分支复制父 `context`，分支写入互不污染
 - **可序列化**: 所有 Node 必须支持 pickle 序列化（用于进程池）
-- **依赖注入**: 使用 dependency-injector 容器管理状态，`@node` 自动注入
+- **依赖注入**: 使用 dependency-injector 容器管理状态，`@node` 在签名包含 `Provide[...]` / `Provider[...]` 默认值或 `Annotated[..., Provide[...]]` 元数据时按需注入
 - **组合层次**: Graph 组合类处理执行逻辑，Node 类提供用户接口，@node 装饰器仅用于用户业务节点
 - **retryable 属性协议**: 异常类通过 `retryable` 类属性声明可重试性，`RetryConfig.should_retry()` 优先检查此属性
 
 ## 测试原则
 
-### 测试文件组织（14 个测试文件 + conftest.py，~2100 行）
+### 测试文件组织（15 个测试文件 + conftest.py，~2110 行）
 
 | 测试文件 | 测试目标 |
 |---|---|
@@ -125,6 +125,7 @@ pdm run bandit -r src/
 | `tests/test_retry.py` | RetryConfig 配置、重试/指数退避/异常判断 |
 | `tests/test_exceptions.py` | 8 个异常类的继承层次和 retryable 属性 |
 | `tests/test_context.py` | BaseFlowContext provider 和线程/协程隔离 |
+| `tests/test_async_state_isolation.py` | async fan-out 分支的 context 继承与隔离 |
 | `tests/test_validate_call.py` | custom_validate_call 输入/输出验证 |
 | `tests/test_sequential.py` | Node.then() 链式调用及 async/sync 混合 |
 | `tests/test_fan_out.py` | Node.fan_out_to() 并行扇出 |
@@ -144,13 +145,13 @@ pdm run bandit -r src/
 ### 常见问题
 1. **Pickle序列化错误**: 确保节点函数定义在模块级别，不使用lambda
 2. **依赖注入失败**: 检查容器wire配置和Provide注解
-3. **并发竞争条件**: 验证ThreadLocalSingleton状态隔离
+3. **并发竞争条件**: 验证 `ContextVarProvider` 状态隔离和 fan-out 分支浅拷贝
 4. **测试超时**: 检查并行执行器的max_workers配置
 
 ### 调试技巧
 - 启用详细日志: `logging.getLogger("streamlet").setLevel(logging.DEBUG)`
 - 检查并行结果: 使用`ParallelResult`数据类分析执行状态
-- 状态检查: 通过依赖注入访问线程本地状态
+- 状态检查: 通过 `BaseFlowContext.context` 访问当前执行上下文
 
 ## 数据流处理特殊考虑
 
@@ -164,9 +165,9 @@ pdm run bandit -r src/
 - **内置函数优化**: 优先使用内置函数如`map()`, `filter()`, `any()`, `all()`而非手写循环
 
 ### 错误恢复
-- **分层重试**: Node级别重试 + 组合级别重试
-- **异常分类**: 区分瞬时异常(TRANSIENT_EXCEPTIONS)和永久异常(PERMANENT_EXCEPTIONS)
-- **状态回滚**: 失败时的状态清理和恢复机制
+- **节点级重试**: `@node(enable_retry=True)` 使用 `RetryConfig` 和异常 `retryable` 属性判断是否重试
+- **并行错误隔离**: fan-out target 失败会包装为 `ParallelResult(success=False)`，不阻断其它 target
+- **循环错误策略**: `repeat(stop_on_error=True)` 抛出 `LoopControlException`；默认记录警告并继续使用上一次成功结果
 
 ### 监控和观测
 - **执行跟踪**: 记录每个节点的执行时间和状态

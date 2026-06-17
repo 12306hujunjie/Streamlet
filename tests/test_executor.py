@@ -197,18 +197,18 @@ class TestAsyncExecutorAGather:
 
     @pytest.mark.asyncio
     async def test_agather_custom_key_func(self):
-        """自定义 key_func。"""
+        """自定义 key_func 控制结果键名。"""
         a = StubNode("a", lambda x: x + 1)
         b = StubNode("b", lambda x: x * 10)
         ex = AsyncExecutor()
 
         results = await ex.agather(
             [(a, 1), (b, 2)],
-            key_func=lambda n: f"r_{n.name}",
+            key_func=lambda n: f"result_{n.name}",
         )
 
-        assert results["r_a"].result == 2
-        assert results["r_b"].result == 20
+        assert results["result_a"].result == 2
+        assert results["result_b"].result == 20
 
     @pytest.mark.asyncio
     async def test_agather_error_wrapping(self):

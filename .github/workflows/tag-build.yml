@@ -1,4 +1,4 @@
-name: Tag Build
+name: Tag Build and Publish
 
 on:
   push:
@@ -6,8 +6,9 @@ on:
       - 'v*.*.*'
 
 jobs:
-  test-and-build:
+  test-build-publish:
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: read
 
@@ -31,6 +32,33 @@ jobs:
         run: |
           pdm install -G dev
 
+      - name: Validate tag version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PROJECT_VERSION="$(pdm run python - <<'PY'
+          from pathlib import Path
+
+          in_project = False
+          for line in Path("pyproject.toml").read_text(encoding="utf-8").splitlines():
+              stripped = line.strip()
+              if stripped == "[project]":
+                  in_project = True
+                  continue
+              if stripped.startswith("[") and stripped.endswith("]"):
+                  in_project = False
+              if in_project and stripped.startswith("version = "):
+                  print(stripped.split("=", 1)[1].strip().strip('"'))
+                  break
+          else:
+              raise SystemExit("project.version not found in pyproject.toml")
+          PY
+          )"
+
+          if [ "$TAG_VERSION" != "$PROJECT_VERSION" ]; then
+            echo "Tag version ${TAG_VERSION} does not match pyproject.toml version ${PROJECT_VERSION}."
+            exit 1
+          fi
+
       - name: Run tests
         run: |
           pdm run pytest
@@ -38,6 +66,10 @@ jobs:
       - name: Build package
         run: |
           pdm build
+
+      - name: Publish package to PyPI
+        run: |
+          pdm publish --username __token__ --password "${{ secrets.PYPI_API_TOKEN }}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

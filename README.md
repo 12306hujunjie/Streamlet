@@ -76,7 +76,7 @@ asyncio.run(main())
 ### 并行流：扇出 + 聚合
 
 ```python
-from streamlet import node
+from streamlet import fan_out_args, node
 
 @node
 def source(x: int) -> dict:
@@ -98,6 +98,20 @@ def aggregate(results: dict) -> dict:
 workflow = source.fan_out_to([multiply, add_ten], executor="thread").fan_in(aggregate)
 result = workflow(5)
 print(result)  # {"total": 25, "results": [10, 15]}
+```
+
+source 返回普通值时，所有 target 接收同一个单参数；需要为不同 target
+传递不同 kwargs 时，返回显式的 `fan_out_args`：
+
+```python
+@node
+def route(user_id: str):
+    return fan_out_args(
+        {"user_id": user_id, "limit": 10},
+        {"user_id": user_id, "include_archived": False},
+    )
+
+flow = route.fan_out_to([fetch_orders, fetch_profile])
 ```
 
 ### 条件流：分支路由 + 依赖注入

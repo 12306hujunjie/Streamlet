@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.streamlet import ParallelResult, node
+from src.streamlet import ParallelResult, fan_out_args, node
 from tests.conftest import add_five, aggregate_sum, multiply, source_data
 
 
@@ -39,6 +39,29 @@ class TestFanInBasic:
         for key, val in data.items():
             assert isinstance(val, ParallelResult)
 
+    def test_fan_out_args_then_fan_in(self):
+        @node
+        def source() -> object:
+            return fan_out_args({"value": 2}, {"value": 3})
+
+        @node
+        def double_value(value: int) -> int:
+            return value * 2
+
+        @node
+        def square_value(value: int) -> int:
+            return value**2
+
+        @node
+        def collect(results: dict) -> list[int]:
+            return sorted(r.result for r in results.values() if r.success)
+
+        result = source.fan_out_to(
+            [double_value, square_value], executor="thread"
+        ).fan_in(collect)()
+
+        assert result == [4, 9]
+
 
 class TestFanInEdgeCases:
     def test_single_target_aggregation(self):
@@ -73,3 +96,24 @@ class TestFanOutIn:
             [multiply, add_five], executor="thread"
         ).fan_in(aggregate_sum)(10)
         assert result1 == result2
+
+    def test_fan_out_args_with_fan_out_in(self):
+        @node
+        def source() -> object:
+            return fan_out_args({"value": 5}, {"value": 7})
+
+        @node
+        def minus_one(value: int) -> int:
+            return value - 1
+
+        @node
+        def plus_one(value: int) -> int:
+            return value + 1
+
+        @node
+        def collect(results: dict) -> list[int]:
+            return sorted(r.result for r in results.values() if r.success)
+
+        result = source.fan_out_in([minus_one, plus_one], collect, executor="thread")()
+
+        assert result == [4, 8]

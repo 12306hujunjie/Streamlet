@@ -1,6 +1,6 @@
 [project]
 name = "streamlet-py"
-version = "0.0.3"
+version = "0.0.4"
 description = "A powerful Python framework for building declarative, concurrent data processing workflows"
 authors = [
     {name = "12306hujunjie", email = "545512690@qq.com"},

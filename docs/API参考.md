@@ -36,12 +36,34 @@
 
 ### `fan_out_to(nodes: list[Node], executor: str = "thread", max_workers: int = None) -> Node`
 
-并行扇出。source 执行后，每个 target 接收相同的 source 输出并行执行。返回 `dict[str, ParallelResult]`。
+并行扇出。source 执行后，每个 target 并行执行。返回 `dict[str, ParallelResult]`。
+
+默认情况下，每个 target 接收相同的 source 输出作为单个位置参数。若 source 返回
+`fan_out_args(...)`，则每个参数字典按顺序对应一个 target，并作为该 target 的
+`kwargs` 调用。裸 `list[dict]` 会被当成普通业务数据广播，不会触发按 target 展开。
 
 `executor` 取值：
 - `"thread"` — 线程池（默认），更适合 I/O 密集或阻塞型任务
 - `"async"` — 协程并发，适合 I/O 密集任务
 - `"auto"` — 根据节点类型自动选择
+
+### `fan_out_args(*items: dict[str, Any]) -> FanOutArgs`
+
+显式 fan-out 参数协议。每个 `dict` 对应 `fan_out_to` 中同位置 target 的
+`kwargs`。`items` 数量必须等于 target 数量，否则在运行时抛出 `ValueError`。
+
+```python
+from streamlet import fan_out_args, node
+
+@node
+def source(user_id: str):
+    return fan_out_args(
+        {"user_id": user_id, "limit": 10},
+        {"user_id": user_id, "include_archived": False},
+    )
+
+flow = source.fan_out_to([fetch_orders, fetch_profile])
+```
 
 ### `fan_in(aggregator: Node) -> Node`
 

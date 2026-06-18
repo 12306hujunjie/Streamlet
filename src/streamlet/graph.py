@@ -8,7 +8,7 @@ import logging
 from typing import Any
 
 from .exceptions import LoopControlException
-from .executor import AsyncExecutor, SyncExecutor
+from .executor import AsyncExecutor, FanOutArgs, ParallelTask, SyncExecutor
 
 logger = logging.getLogger("streamlet")
 
@@ -20,6 +20,21 @@ def _maybe_await(coro: Any) -> Any:
         return coro
     except RuntimeError:
         return asyncio.run(coro)
+
+
+def _parallel_tasks(source_result: Any, targets: list[Any]) -> list[ParallelTask]:
+    if not isinstance(source_result, FanOutArgs):
+        return [(target, source_result) for target in targets]
+
+    expected = len(targets)
+    actual = len(source_result.items)
+    if actual != expected:
+        raise ValueError(f"expected {expected} fan-out inputs, got {actual}")
+
+    return [
+        (target, (), kwargs)
+        for target, kwargs in zip(targets, source_result.items, strict=True)
+    ]
 
 
 class Pipeline:
@@ -83,12 +98,12 @@ class Parallel:
     def _sync_run(self, *args: Any, **kwargs: Any) -> Any:
         ex = SyncExecutor(max_workers=self.max_workers)
         source_result = ex.run(self.source, *args, **kwargs)
-        return ex.gather([(t, source_result) for t in self.targets])
+        return ex.gather(_parallel_tasks(source_result, self.targets))
 
     async def _async_run(self, *args: Any, **kwargs: Any) -> Any:
         ex = AsyncExecutor()
         source_result = await ex.arun(self.source, *args, **kwargs)
-        return await ex.agather([(t, source_result) for t in self.targets])
+        return await ex.agather(_parallel_tasks(source_result, self.targets))
 
 
 class Conditional:

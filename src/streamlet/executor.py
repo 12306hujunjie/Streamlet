@@ -28,6 +28,36 @@ class ParallelResult:
     execution_time: float | None = None
 
 
+@dataclass(frozen=True)
+class FanOutArgs:
+    """显式 fan-out 参数协议：每个 dict 对应一个 target 的 kwargs。"""
+
+    items: tuple[dict[str, Any], ...]
+
+    def __post_init__(self) -> None:
+        if not all(isinstance(item, dict) for item in self.items):
+            raise TypeError("fan_out_args items must be dict")
+        object.__setattr__(self, "items", tuple(dict(item) for item in self.items))
+
+
+def fan_out_args(*items: dict[str, Any]) -> FanOutArgs:
+    """Create explicit per-target kwargs for fan-out execution."""
+    return FanOutArgs(items)
+
+
+ParallelTask = tuple[Any, Any] | tuple[Any, tuple[Any, ...], dict[str, Any]]
+
+
+def _split_task(task: ParallelTask) -> tuple[Any, tuple[Any, ...], dict[str, Any]]:
+    if len(task) == 2:
+        node, inp = task
+        return node, (inp,), {}
+    if len(task) == 3:
+        node, args, kwargs = task
+        return node, tuple(args), dict(kwargs)
+    raise ValueError(f"Parallel task must contain 2 or 3 items, got {len(task)}")
+
+
 def _unique_key(base_name: str, existing: dict) -> str:
     """生成唯一结果键，同名自动追加后缀 [1], [2], ..."""
     if base_name not in existing:
@@ -45,7 +75,7 @@ class Executor(Protocol):
     def run(self, node: Any, *args: Any, **kwargs: Any) -> Any: ...
     def gather(
         self,
-        tasks: list[tuple[Any, Any]],
+        tasks: list[ParallelTask],
         key_func: Callable[[Any], str] | None = None,
     ) -> dict[str, "ParallelResult"]: ...
 
@@ -62,10 +92,12 @@ class SyncExecutor:
     def run(self, node: Any, *args: Any, **kwargs: Any) -> Any:
         return node._execute(*args, **kwargs)
 
-    def _run_with_time(self, node: Any, inp: Any) -> Any:
+    def _run_with_time(
+        self, node: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
+    ) -> Any:
         start = time.time()
         try:
-            result = node._execute(inp)
+            result = node._execute(*args, **kwargs)
             return ParallelResult(
                 node_name=node.name,
                 success=True,
@@ -81,14 +113,20 @@ class SyncExecutor:
                 execution_time=time.time() - start,
             )
 
-    def _run_isolated(self, node: Any, inp: Any, snapshot: dict[int, Any]) -> Any:
+    def _run_isolated(
+        self,
+        node: Any,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+        snapshot: dict[int, Any],
+    ) -> Any:
         """在隔离的 context 中执行——dict 浅拷贝避免线程池 task 间污染。"""
         apply_context(snapshot)
-        return self._run_with_time(node, inp)
+        return self._run_with_time(node, args, kwargs)
 
     def gather(
         self,
-        node_inputs: list[tuple[Any, Any]],
+        node_inputs: list[ParallelTask],
         key_func: Callable[[Any], str] | None = None,
     ) -> dict[str, "ParallelResult"]:
         parent_ctx = contextvars.copy_context()
@@ -101,12 +139,13 @@ class SyncExecutor:
                         parent_ctx.copy().run,
                         self._run_isolated,
                         n,
-                        inp,
+                        args,
+                        kwargs,
                         parent_snapshot,
                     ),
                     n,
                 )
-                for n, inp in node_inputs
+                for n, args, kwargs in (_split_task(task) for task in node_inputs)
             ]
             for future, node in futures:
                 base = key_func(node) if key_func else node.name
@@ -124,18 +163,20 @@ class AsyncExecutor:
 
     async def agather(
         self,
-        node_inputs: list[tuple[Any, Any]],
+        node_inputs: list[ParallelTask],
         key_func: Callable[[Any], str] | None = None,
     ) -> dict[str, "ParallelResult"]:
         parent_ctx_snapshot = capture_context()
 
-        async def _execute_one(node: Any, inp: Any) -> tuple[str, ParallelResult]:
+        async def _execute_one(
+            node: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
+        ) -> tuple[str, ParallelResult]:
             # fan-out 分支隔离：为每个 asyncio task 注入独立的 context 快照
             apply_context(parent_ctx_snapshot)
             base = key_func(node) if key_func else node.name
             start = time.time()
             try:
-                result = await node._execute_async(inp)
+                result = await node._execute_async(*args, **kwargs)
                 return base, ParallelResult(
                     node_name=node.name,
                     success=True,
@@ -152,7 +193,7 @@ class AsyncExecutor:
                 )
 
         results_list = await asyncio.gather(
-            *(_execute_one(n, inp) for n, inp in node_inputs)
+            *(_execute_one(*_split_task(task)) for task in node_inputs)
         )
         # asyncio.gather 并发返回，存在同名键可能 → _unique_key 去重
         results: dict[str, ParallelResult] = {}

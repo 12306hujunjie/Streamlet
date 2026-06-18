@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.streamlet import ParallelResult, node
+from src.streamlet import FanOutArgs, ParallelResult, fan_out_args, node
 from tests.conftest import add_five, multiply, source_data
 
 
@@ -57,6 +57,30 @@ class TestFanOutExecutorTypes:
         results = flow(10)
         assert sorted(r.result for r in results.values()) == [15, 20]
 
+    @pytest.mark.asyncio
+    async def test_auto_executor_with_fan_out_args_and_mixed_targets(self):
+        @node
+        def source(user_id: str):
+            return fan_out_args(
+                {"user_id": user_id, "limit": 3},
+                {"user_id": user_id, "limit": 4},
+            )
+
+        @node
+        def sync_fetch(user_id: str, limit: int) -> tuple[str, int]:
+            return user_id, limit
+
+        @node
+        async def async_fetch(user_id: str, limit: int) -> tuple[str, int]:
+            return user_id, limit
+
+        flow = source.fan_out_to([sync_fetch, async_fetch], executor="auto")
+
+        results = await flow("u-3")
+
+        assert results["sync_fetch"].result == ("u-3", 3)
+        assert results["async_fetch"].result == ("u-3", 4)
+
     def test_invalid_executor_raises(self):
         with pytest.raises(ValueError, match="Only 'thread', 'async', and 'auto'"):
             source_data.fan_out_to([multiply], executor="process")
@@ -103,3 +127,105 @@ class TestFanOutWithAsyncSource:
         results = await flow(10)
         result_value = list(results.values())[0].result
         assert result_value == 60  # source: 10*2=20, multiply: 20*3=60
+
+
+class TestFanOutArgs:
+    def test_source_can_route_kwargs_to_matching_targets(self):
+        @node
+        def source(user_id: str):
+            return fan_out_args(
+                {"user_id": user_id, "limit": 10},
+                {"user_id": user_id, "include_archived": False},
+            )
+
+        @node
+        def fetch_orders(user_id: str, limit: int) -> tuple[str, int]:
+            return user_id, limit
+
+        @node
+        def fetch_profile(user_id: str, include_archived: bool) -> tuple[str, bool]:
+            return user_id, include_archived
+
+        flow = source.fan_out_to([fetch_orders, fetch_profile], executor="thread")
+
+        results = flow("u-1")
+
+        assert results["fetch_orders"].result == ("u-1", 10)
+        assert results["fetch_profile"].result == ("u-1", False)
+
+    @pytest.mark.asyncio
+    async def test_async_fan_out_args_route_kwargs_to_matching_targets(self):
+        @node
+        async def source(user_id: str):
+            return fan_out_args(
+                {"user_id": user_id, "limit": 5},
+                {"user_id": user_id, "include_archived": True},
+            )
+
+        @node
+        async def fetch_orders(user_id: str, limit: int) -> tuple[str, int]:
+            return user_id, limit
+
+        @node
+        async def fetch_profile(
+            user_id: str, include_archived: bool
+        ) -> tuple[str, bool]:
+            return user_id, include_archived
+
+        flow = source.fan_out_to([fetch_orders, fetch_profile], executor="async")
+
+        results = await flow("u-2")
+
+        assert results["fetch_orders"].result == ("u-2", 5)
+        assert results["fetch_profile"].result == ("u-2", True)
+
+    def test_fan_out_args_requires_one_input_per_target(self):
+        @node
+        def source():
+            return fan_out_args({"value": 1})
+
+        @node
+        def left(value: int) -> int:
+            return value
+
+        @node
+        def right(value: int) -> int:
+            return value
+
+        flow = source.fan_out_to([left, right], executor="thread")
+
+        with pytest.raises(ValueError, match="expected 2 fan-out inputs, got 1"):
+            flow()
+
+    def test_fan_out_args_rejects_non_dict_items(self):
+        with pytest.raises(TypeError, match="fan_out_args items must be dict"):
+            fan_out_args({"value": 1}, ["not", "a", "dict"])
+
+    def test_fan_out_args_constructor_rejects_non_dict_items(self):
+        with pytest.raises(TypeError, match="fan_out_args items must be dict"):
+            FanOutArgs(({"value": 1}, ["not", "a", "dict"]))
+
+    def test_fan_out_args_constructor_copies_items(self):
+        item = {"value": 1}
+
+        args = FanOutArgs((item,))
+        item["value"] = 2
+
+        assert args.items[0]["value"] == 1
+
+    def test_plain_list_of_dicts_is_still_broadcast_as_single_input(self):
+        payload = [{"value": 1}, {"value": 2}]
+
+        @node
+        def source() -> list[dict]:
+            return payload
+
+        @node
+        def count(items: list[dict]) -> int:
+            return len(items)
+
+        flow = source.fan_out_to([count], executor="thread")
+
+        results = flow()
+
+        assert results["count"].result == 2

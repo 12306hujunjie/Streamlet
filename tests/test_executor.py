@@ -108,6 +108,14 @@ class TestSyncExecutorGather:
         assert results["result_a"].result == 2
         assert results["result_b"].result == 20
 
+    def test_gather_passes_args_and_kwargs(self):
+        node = StubNode("concat", lambda a, b, suffix="": f"{a}{b}{suffix}")
+        ex = SyncExecutor()
+
+        results = ex.gather([(node, ("x", "y"), {"suffix": "!"})])
+
+        assert results["concat"].result == "xy!"
+
     def test_gather_error_wrapping(self):
         def fail(_):
             raise ValueError("boom")
@@ -209,6 +217,15 @@ class TestAsyncExecutorAGather:
 
         assert results["result_a"].result == 2
         assert results["result_b"].result == 20
+
+    @pytest.mark.asyncio
+    async def test_agather_passes_args_and_kwargs(self):
+        node = StubNode("concat", lambda a, b, suffix="": f"{a}{b}{suffix}")
+        ex = AsyncExecutor()
+
+        results = await ex.agather([(node, ("x", "y"), {"suffix": "?"})])
+
+        assert results["concat"].result == "xy?"
 
     @pytest.mark.asyncio
     async def test_agather_error_wrapping(self):

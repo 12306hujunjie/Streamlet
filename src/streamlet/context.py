@@ -7,9 +7,9 @@ import functools
 import inspect
 import logging
 import weakref
-from collections.abc import Callable
+from collections.abc import Callable, MutableMapping, MutableSequence, MutableSet
 from contextvars import ContextVar
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from dependency_injector import containers, providers
 from pydantic import ConfigDict, TypeAdapter, ValidationError, validate_call
@@ -21,15 +21,40 @@ logger = logging.getLogger("streamlet")
 
 # 模块级注册表——供 executor 做 fan-out 隔离
 _CONTEXTVAR_PROVIDERS: weakref.WeakSet = weakref.WeakSet()
+ContextCopyPolicy = Literal["shallow", "strict"]
+_MUTABLE_VALUE_TYPES = (MutableMapping, MutableSequence, MutableSet, bytearray)
+
+
+def _validate_copy_policy(copy_policy: str) -> ContextCopyPolicy:
+    if copy_policy not in ("shallow", "strict"):
+        raise ValueError(
+            f"copy_policy must be 'shallow' or 'strict', got {copy_policy!r}"
+        )
+    return cast("ContextCopyPolicy", copy_policy)
+
+
+def _reject_nested_mutable_values(value: dict[Any, Any]) -> None:
+    for key, item in value.items():
+        if isinstance(item, _MUTABLE_VALUE_TYPES):
+            raise ValueError(
+                f"context key {key!r} contains nested mutable value "
+                f"of type {type(item).__name__}; "
+                "fan-out context isolation only shallow-copies the top-level dict"
+            )
 
 
 class ContextVarProvider(providers.Provider):
     """ContextVar 驱动的 Provider——同时支持线程安全和协程安全。"""
 
-    def __init__(self, default_factory: Callable[[], Any] = dict):
+    def __init__(
+        self,
+        default_factory: Callable[[], Any] = dict,
+        copy_policy: str = "shallow",
+    ) -> None:
         super().__init__()
         self._context_var = ContextVar(f"streamlet_{id(self)}", default=None)
         self._default_factory = default_factory
+        self._copy_policy = _validate_copy_policy(copy_policy)
         _CONTEXTVAR_PROVIDERS.add(self)
 
     def __deepcopy__(self, memo: dict[Any, Any] | None) -> "ContextVarProvider":
@@ -40,7 +65,10 @@ class ContextVarProvider(providers.Provider):
         copy_obj = memo.get(id(self))
         if copy_obj is not None:
             return cast("ContextVarProvider", copy_obj)
-        copy_obj = ContextVarProvider(self._default_factory)
+        copy_obj = ContextVarProvider(
+            self._default_factory,
+            copy_policy=self._copy_policy,
+        )
         memo[id(self)] = copy_obj
         return copy_obj
 
@@ -74,8 +102,18 @@ def apply_context(snapshot: dict[int, Any]) -> None:
         if val is None:
             provider._context_var.set(None)
         elif isinstance(val, dict):
+            if provider._copy_policy == "strict":
+                _reject_nested_mutable_values(val)
             provider._context_var.set(dict(val))
         else:
+            if provider._copy_policy == "strict" and isinstance(
+                val, _MUTABLE_VALUE_TYPES
+            ):
+                raise ValueError(
+                    f"context value contains mutable value of type "
+                    f"{type(val).__name__}; fan-out context isolation cannot "
+                    "copy non-dict mutable values safely"
+                )
             provider._context_var.set(val)
 
 

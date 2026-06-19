@@ -3,7 +3,10 @@
 import copy
 import threading
 
+import pytest
+
 from src.streamlet import BaseFlowContext
+from src.streamlet.context import ContextVarProvider
 
 
 class TestBaseFlowContext:
@@ -50,3 +53,7 @@ class TestBaseFlowContext:
         assert p1()["x"] == 1
         assert p2()["x"] == 2
         assert p1() is not p2()
+
+    def test_context_provider_rejects_unknown_copy_policy(self):
+        with pytest.raises(ValueError, match="copy_policy"):
+            ContextVarProvider(dict, copy_policy="deep")

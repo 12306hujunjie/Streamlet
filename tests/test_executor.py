@@ -7,6 +7,7 @@ import time
 import pytest
 
 from src.streamlet import BaseFlowContext
+from src.streamlet.context import ContextVarProvider
 from src.streamlet.executor import AsyncExecutor, SyncExecutor
 
 # ============================================================
@@ -366,3 +367,42 @@ class TestAsyncExecutorContextIsolation:
         assert "task_a" not in keys_b
         assert "task_a" in keys_a
         assert "task_b" in keys_b
+
+
+class TestStrictContextPolicy:
+    """Strict context policy rejects nested mutable values before fan-out."""
+
+    def _strict_context(self) -> BaseFlowContext:
+        class StrictFlowContext(BaseFlowContext):
+            context = ContextVarProvider(dict, copy_policy="strict")
+
+        return StrictFlowContext()
+
+    def test_thread_fan_out_rejects_nested_mutable_context_value(self):
+        container = self._strict_context()
+        context = container.context()
+        context["items"] = []
+
+        ex = SyncExecutor()
+        node = StubNode("reader", lambda x: x)
+
+        try:
+            with pytest.raises(ValueError, match="context key 'items'.*nested mutable"):
+                ex.gather([(node, 1)])
+        finally:
+            context.clear()
+
+    @pytest.mark.asyncio
+    async def test_async_fan_out_rejects_nested_mutable_context_value(self):
+        container = self._strict_context()
+        context = container.context()
+        context["items"] = []
+
+        ex = AsyncExecutor()
+        node = StubNode("reader", lambda x: x)
+
+        try:
+            with pytest.raises(ValueError, match="context key 'items'.*nested mutable"):
+                await ex.agather([(node, 1)])
+        finally:
+            context.clear()

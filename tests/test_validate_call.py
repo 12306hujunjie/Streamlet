@@ -110,6 +110,17 @@ class TestPydanticModelValidation:
         result = create_user("Bob", 25)
         assert result.name == "Bob"
 
+    def test_pydantic_output_returns_validated_value(self):
+        UserModel = self.UserModel
+
+        @custom_validate_call()
+        def create_user(name: str, age: str) -> UserModel:
+            return {"name": name, "age": age}
+
+        result = create_user("Bob", "25")
+        assert isinstance(result, UserModel)
+        assert result.age == 25
+
     def test_pydantic_output_validation_fails(self):
         UserModel = self.UserModel
 

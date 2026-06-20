@@ -161,7 +161,7 @@ def custom_validate_call(
         def validate_result(result: Any) -> Any:
             if return_type_adapter:
                 try:
-                    return_type_adapter.validate_python(result)
+                    return return_type_adapter.validate_python(result)
                 except ValidationError as e:
                     raise create_output_exception(e) from e
             return result

@@ -13,6 +13,25 @@ from .exceptions import NodeRetryExhaustedException
 logger = logging.getLogger("streamlet")
 
 
+def _validate_exception_types(exception_types: tuple) -> None:
+    if not isinstance(exception_types, tuple):
+        raise TypeError(
+            f"exception_types must be a tuple of Exception subclasses, "
+            f"got {type(exception_types).__name__}"
+        )
+    invalid_types = [
+        exception_type
+        for exception_type in exception_types
+        if not isinstance(exception_type, type)
+        or not issubclass(exception_type, Exception)
+    ]
+    if invalid_types:
+        raise TypeError(
+            "exception_types must contain only Exception subclasses, "
+            f"got {invalid_types!r}"
+        )
+
+
 class RetryConfig:
     """重试配置类"""
 
@@ -28,8 +47,11 @@ class RetryConfig:
             raise ValueError(f"retry_count must be >= 0, got {retry_count}")
         if retry_delay < 0:
             raise ValueError(f"retry_delay must be >= 0, got {retry_delay}")
+        if backoff_factor < 0:
+            raise ValueError(f"backoff_factor must be >= 0, got {backoff_factor}")
         if max_delay < 0:
             raise ValueError(f"max_delay must be >= 0, got {max_delay}")
+        _validate_exception_types(exception_types)
         self.retry_count = retry_count
         self.retry_delay = retry_delay
         self.exception_types = exception_types

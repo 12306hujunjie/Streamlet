@@ -76,9 +76,25 @@ class TestRetryConfig:
         with pytest.raises(ValueError, match="retry_delay"):
             RetryConfig(retry_delay=-0.1)
 
+    def test_negative_backoff_factor_raises(self):
+        with pytest.raises(ValueError, match="backoff_factor"):
+            RetryConfig(backoff_factor=-1.0)
+
     def test_negative_max_delay_raises(self):
         with pytest.raises(ValueError, match="max_delay"):
             RetryConfig(max_delay=-1.0)
+
+    @pytest.mark.parametrize(
+        "exception_types",
+        [
+            ValueError,
+            (ValueError, "not_exception"),
+            (ValueError, 42),
+        ],
+    )
+    def test_invalid_exception_types_raise(self, exception_types):
+        with pytest.raises(TypeError, match="exception_types"):
+            RetryConfig(exception_types=exception_types)
 
 
 class TestNodeWithRetry:

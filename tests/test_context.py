@@ -57,3 +57,8 @@ class TestBaseFlowContext:
     def test_context_provider_rejects_unknown_copy_policy(self):
         with pytest.raises(ValueError, match="copy_policy"):
             ContextVarProvider(dict, copy_policy="deep")
+
+    def test_context_provider_is_public_api(self):
+        from src.streamlet import ContextVarProvider as PublicContextVarProvider
+
+        assert PublicContextVarProvider is ContextVarProvider

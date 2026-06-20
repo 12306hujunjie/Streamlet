@@ -154,6 +154,36 @@ def my_node(context: dict = Provide[BaseFlowContext.context]) -> dict:
 container.wire(modules=[__name__])  # 必须在 @node 定义之后调用
 ```
 
+fan-out 分支复制父上下文时，默认只浅拷贝顶层 `dict`。这会隔离顶层 key 的新增、
+删除和替换，但不会隔离嵌套的 `list` / `dict` / `set` 等可变 value；这些对象
+仍会在分支之间共享引用。
+
+## ContextVarProvider
+
+```python
+ContextVarProvider(
+    default_factory: Callable[[], Any] = dict,
+    copy_policy: str = "shallow",
+)
+```
+
+`ContextVar` 驱动的 provider，支持线程和协程隔离。`BaseFlowContext.context`
+默认使用 `ContextVarProvider(dict)`。
+
+`copy_policy` 取值：
+- `"shallow"` — 默认策略；fan-out 隔离时只浅拷贝顶层 `dict`
+- `"strict"` — fan-out 隔离时拒绝嵌套可变值和非 `dict` 可变 context 值，不做
+  递归深拷贝
+
+需要让嵌套可变状态在 fan-out 前失败时，可定义自定义 context 容器：
+
+```python
+from streamlet import BaseFlowContext, ContextVarProvider
+
+class StrictFlowContext(BaseFlowContext):
+    context = ContextVarProvider(dict, copy_policy="strict")
+```
+
 ## custom_validate_call
 
 ```python

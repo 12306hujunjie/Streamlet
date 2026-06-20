@@ -152,6 +152,21 @@ print(flow({"score": 75}))  # {"result": "pass", "score": 75}
 以零参数执行。框架不会把原始输入或条件返回值传给分支；分支需要业务数据时，
 应通过 `BaseFlowContext.context` 等依赖注入方式读取。
 
+fan-out 分支会复制父级 `BaseFlowContext.context` 后再执行，默认策略只浅拷贝
+顶层 `dict`：新增或替换顶层 key 时分支互不影响；如果 value 本身是嵌套
+`list` / `dict` / `set` 等可变对象，仍会共享同一个对象引用。需要提前拒绝这类
+嵌套可变状态时，可以定义显式的 strict context：
+
+```python
+from streamlet import BaseFlowContext, ContextVarProvider
+
+class StrictFlowContext(BaseFlowContext):
+    context = ContextVarProvider(dict, copy_policy="strict")
+```
+
+`copy_policy="strict"` 不会递归深拷贝 context；它会在 fan-out 隔离时检测并拒绝
+嵌套可变值，让共享状态风险尽早暴露。
+
 ### 重试机制
 
 ```python

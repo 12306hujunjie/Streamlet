@@ -3,6 +3,7 @@
 5 个内部类对应 5 种组合模式，用户通过 Node fluent 接口间接使用。
 """
 
+import asyncio
 import logging
 from typing import Any
 
@@ -76,6 +77,8 @@ class Parallel:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         if self.executor_type == "thread":
+            if self._is_async:
+                return self._async_thread_run(*args, **kwargs)
             return self._sync_run(*args, **kwargs)
         elif self.executor_type == "async":
             return self._async_run(*args, **kwargs)
@@ -89,6 +92,14 @@ class Parallel:
         ex = SyncExecutor(max_workers=self.max_workers)
         source_result = ex.run(self.source, *args, **kwargs)
         return ex.gather(_parallel_tasks(source_result, self.targets))
+
+    async def _async_thread_run(self, *args: Any, **kwargs: Any) -> Any:
+        source_ex = AsyncExecutor()
+        source_result = await source_ex.arun(self.source, *args, **kwargs)
+        target_ex = SyncExecutor(max_workers=self.max_workers)
+        return await asyncio.to_thread(
+            target_ex.gather, _parallel_tasks(source_result, self.targets)
+        )
 
     async def _async_run(self, *args: Any, **kwargs: Any) -> Any:
         ex = AsyncExecutor()

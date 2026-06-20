@@ -1,5 +1,8 @@
 """Tests for Node.fan_out_to() parallel distribution."""
 
+import asyncio
+import time
+
 import pytest
 
 from src.streamlet import FanOutArgs, ParallelResult, fan_out_args, node
@@ -132,6 +135,40 @@ class TestFanOutWithAsyncSource:
         results = await flow(10)
         result_value = list(results.values())[0].result
         assert result_value == 60  # source: 10*2=20, multiply: 20*3=60
+
+    @pytest.mark.asyncio
+    async def test_async_source_thread_executor_runs_in_existing_event_loop(self):
+        @node
+        async def async_source(x: int) -> dict:
+            return {"value": x * 2}
+
+        flow = async_source.fan_out_to([multiply], executor="thread")
+
+        results = await flow(10)
+
+        assert results["multiply"].success is True
+        assert results["multiply"].result == 40
+
+    @pytest.mark.asyncio
+    async def test_async_source_thread_executor_does_not_block_event_loop(self):
+        @node
+        async def async_source(x: int) -> dict:
+            return {"value": x}
+
+        @node
+        def slow_target(data: dict) -> int:
+            time.sleep(0.1)
+            return data["value"]
+
+        flow = async_source.fan_out_to([slow_target], executor="thread")
+
+        start = time.perf_counter()
+        first, second = await asyncio.gather(flow(1), flow(2))
+        elapsed = time.perf_counter() - start
+
+        assert first["slow_target"].result == 1
+        assert second["slow_target"].result == 2
+        assert elapsed < 0.18
 
 
 class TestFanOutArgs:

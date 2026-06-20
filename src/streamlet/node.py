@@ -86,11 +86,11 @@ class Node:
             self, nodes, executor_type=executor_lower, max_workers=max_workers
         )
         # executor="async" 强制 _is_async=True（即使全是 sync 节点），
-        # 否则 FanIn 等下游走 sync 路径会导致 asyncio.run 在 event loop 内失败
+        # thread/auto 则按组合链真实异步性传播，避免 async source 被伪装成 sync。
         is_async = (
             parallel._is_async
             if executor_lower == "auto"
-            else (executor_lower == "async")
+            else (executor_lower == "async" or parallel._is_async)
         )
         return Node(parallel, name=f"{self.name}∥[...]", is_async=is_async)
 

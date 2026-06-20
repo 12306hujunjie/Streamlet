@@ -62,7 +62,8 @@ context.py   exceptions.py   retry.py
 
 - **Python 3.10+**，必须用 PDM 管理依赖
 - **所有函数必须有类型注解**（mypy strict 模式）
-- **测试节点必须定义在模块级别**（pickle 序列化要求），使用 `@node` 装饰器而非直接实例化 `Node`
+- **测试节点优先定义在模块级别**，使用 `@node` 装饰器而非直接实例化 `Node`
+- **Node 不支持 pickle 序列化**，不要依赖 `ProcessPoolExecutor` 或进程池传递 `Node` 实例
 - Graph 内部类（`Pipeline` / `Parallel` / `Conditional` / `Repeat` / `FanIn`）**绝不对用户暴露**，仅由 `Node` fluent 方法内部创建
 - 新依赖需添加到 `pyproject.toml` 并评估必要性
 - 异常类继承自 `StreamletException`，用户业务异常继承自 `UserBusinessException`（默认 `retryable=True`）

@@ -118,6 +118,12 @@ class Node:
     def __repr__(self) -> str:
         return f"Node(name='{self.name}')"
 
+    def __reduce__(self) -> Any:
+        raise TypeError(
+            "Streamlet Node instances are not pickle-serializable. "
+            "Use thread or async executors instead of process-based execution."
+        )
+
 
 def _is_di_marker(value: Any) -> bool:
     return value.__class__ in {_DIProvide, _DIProvider}

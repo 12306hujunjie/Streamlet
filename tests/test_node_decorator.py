@@ -1,5 +1,6 @@
 """Tests for @node decorator with various parameter combinations."""
 
+import pickle
 import warnings
 from typing import Annotated
 
@@ -134,3 +135,11 @@ class TestNodeProperties:
             return x * 2
 
         assert "my_func" in repr(my_func)
+
+    def test_node_rejects_pickle_serialization(self):
+        @node
+        def my_func(x: int) -> int:
+            return x * 2
+
+        with pytest.raises(TypeError, match="not pickle-serializable"):
+            pickle.dumps(my_func)

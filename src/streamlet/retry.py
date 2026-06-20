@@ -32,6 +32,20 @@ def _validate_exception_types(exception_types: tuple) -> None:
         )
 
 
+def _validate_retry_count(retry_count: int) -> None:
+    if isinstance(retry_count, bool) or not isinstance(retry_count, int):
+        raise TypeError(f"retry_count must be an int, got {type(retry_count).__name__}")
+    if retry_count < 0:
+        raise ValueError(f"retry_count must be >= 0, got {retry_count}")
+
+
+def _validate_non_negative_number(name: str, value: float) -> None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError(f"{name} must be a number, got {type(value).__name__}")
+    if value < 0:
+        raise ValueError(f"{name} must be >= 0, got {value}")
+
+
 class RetryConfig:
     """重试配置类"""
 
@@ -43,14 +57,10 @@ class RetryConfig:
         backoff_factor: float = 1.0,
         max_delay: float = 60.0,
     ) -> None:
-        if retry_count < 0:
-            raise ValueError(f"retry_count must be >= 0, got {retry_count}")
-        if retry_delay < 0:
-            raise ValueError(f"retry_delay must be >= 0, got {retry_delay}")
-        if backoff_factor < 0:
-            raise ValueError(f"backoff_factor must be >= 0, got {backoff_factor}")
-        if max_delay < 0:
-            raise ValueError(f"max_delay must be >= 0, got {max_delay}")
+        _validate_retry_count(retry_count)
+        _validate_non_negative_number("retry_delay", retry_delay)
+        _validate_non_negative_number("backoff_factor", backoff_factor)
+        _validate_non_negative_number("max_delay", max_delay)
         _validate_exception_types(exception_types)
         self.retry_count = retry_count
         self.retry_delay = retry_delay

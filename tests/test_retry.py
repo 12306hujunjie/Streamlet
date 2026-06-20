@@ -85,6 +85,33 @@ class TestRetryConfig:
             RetryConfig(max_delay=-1.0)
 
     @pytest.mark.parametrize(
+        "retry_count",
+        [
+            1.5,
+            True,
+            "3",
+        ],
+    )
+    def test_invalid_retry_count_type_raises(self, retry_count):
+        with pytest.raises(TypeError, match="retry_count"):
+            RetryConfig(retry_count=retry_count)
+
+    @pytest.mark.parametrize(
+        ("field_name", "value"),
+        [
+            ("retry_delay", True),
+            ("retry_delay", "1.0"),
+            ("backoff_factor", False),
+            ("backoff_factor", "2.0"),
+            ("max_delay", True),
+            ("max_delay", "60.0"),
+        ],
+    )
+    def test_invalid_numeric_type_raises(self, field_name, value):
+        with pytest.raises(TypeError, match=field_name):
+            RetryConfig(**{field_name: value})
+
+    @pytest.mark.parametrize(
         "exception_types",
         [
             ValueError,

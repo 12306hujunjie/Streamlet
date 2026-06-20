@@ -41,6 +41,13 @@ result = double.then(add_ten)(5)  # 20
 | `.branch_on({key: node})` | 条件分支 | `a.branch_on({True: b, False: c})()` |
 | `.repeat(times)` | 重复执行 | `a.repeat(3)(data)` |
 
+`fan_out_to` / `fan_out_in` 的 `executor` 用于选择并行调度策略：
+`"thread"` 使用线程池，适合同步或阻塞型 target；`"async"` 使用
+`asyncio.gather`，只适合真实 `async` 且会主动 `await` 的 target。同步
+target 在 `"async"` executor 下会直接运行在当前 event loop 中，不会自动放入
+线程池，CPU 或阻塞 I/O 会阻塞 event loop。`"auto"` 会在全同步节点时选择
+`"thread"`，在包含异步节点时选择 `"async"`。
+
 ## 示例
 
 ### 顺序流：ETL 管道

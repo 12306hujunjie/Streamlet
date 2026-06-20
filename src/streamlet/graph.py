@@ -3,7 +3,6 @@
 5 个内部类对应 5 种组合模式，用户通过 Node fluent 接口间接使用。
 """
 
-import asyncio
 import logging
 from typing import Any
 
@@ -11,15 +10,6 @@ from .exceptions import LoopControlException
 from .executor import AsyncExecutor, FanOutArgs, ParallelTask, SyncExecutor
 
 logger = logging.getLogger("streamlet")
-
-
-def _maybe_await(coro: Any) -> Any:
-    """协程桥接：event loop 内返回协程供上层 await，否则 asyncio.run。"""
-    try:
-        asyncio.get_running_loop()
-        return coro
-    except RuntimeError:
-        return asyncio.run(coro)
 
 
 def _parallel_tasks(source_result: Any, targets: list[Any]) -> list[ParallelTask]:
@@ -47,7 +37,7 @@ class Pipeline:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         if self._is_async:
-            return _maybe_await(self._async_run(*args, **kwargs))
+            return self._async_run(*args, **kwargs)
         else:
             return self._sync_run(*args, **kwargs)
 
@@ -88,10 +78,10 @@ class Parallel:
         if self.executor_type == "thread":
             return self._sync_run(*args, **kwargs)
         elif self.executor_type == "async":
-            return _maybe_await(self._async_run(*args, **kwargs))
+            return self._async_run(*args, **kwargs)
         else:  # "auto"
             if self._is_async:
-                return _maybe_await(self._async_run(*args, **kwargs))
+                return self._async_run(*args, **kwargs)
             else:
                 return self._sync_run(*args, **kwargs)
 
@@ -118,7 +108,7 @@ class Conditional:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         if self._is_async:
-            return _maybe_await(self._async_run(*args, **kwargs))
+            return self._async_run(*args, **kwargs)
         else:
             return self._sync_run(*args, **kwargs)
 
@@ -156,7 +146,7 @@ class Repeat:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         if self._is_async:
-            return _maybe_await(self._async_run(*args, **kwargs))
+            return self._async_run(*args, **kwargs)
         else:
             return self._sync_run(*args, **kwargs)
 
@@ -217,7 +207,7 @@ class FanIn:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         if self._is_async:
-            return _maybe_await(self._async_run(*args, **kwargs))
+            return self._async_run(*args, **kwargs)
         else:
             return self._sync_run(*args, **kwargs)
 

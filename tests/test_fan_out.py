@@ -34,6 +34,11 @@ class TestFanOutBasic:
         assert 20 in result_values
         assert 15 in result_values
 
+    def test_async_executor_runs_from_sync_context(self):
+        flow = source_data.fan_out_to([multiply, add_five], executor="async")
+        results = flow(10)
+        assert sorted(r.result for r in results.values()) == [15, 20]
+
     def test_single_target(self):
         flow = source_data.fan_out_to([multiply], executor="thread")
         results = flow(10)

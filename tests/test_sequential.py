@@ -24,6 +24,11 @@ class TestThenBasic:
 
 
 class TestThenAsyncSyncMixing:
+    def test_async_chain_runs_from_sync_context(self):
+        flow = async_double.then(add_ten)
+        result = flow(5)
+        assert result == 20
+
     @pytest.mark.asyncio
     async def test_sync_then_async(self):
         flow = double.then(async_add_ten)

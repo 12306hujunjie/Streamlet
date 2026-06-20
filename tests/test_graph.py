@@ -56,7 +56,9 @@ class TestPipeline:
         right = StubNode("async_add", lambda x: x + 10, is_async=True)
         p = Pipeline(left, right)
 
-        assert p(5) == 20
+        result = p(5)
+        assert inspect.isawaitable(result)
+        assert asyncio.run(result) == 20
 
     def test_error_propagation(self):
         def fail(_):
@@ -133,7 +135,9 @@ class TestParallel:
         t2 = StubNode("async_t", a_target, is_async=True)
         p = Parallel(source, [t1, t2], executor_type="auto")
 
-        results = p(5)
+        result = p(5)
+        assert inspect.isawaitable(result)
+        results = asyncio.run(result)
         assert results["sync_t"].result == 15
         assert results["async_t"].result == 10
 
@@ -168,7 +172,9 @@ class TestConditional:
         branch = StubNode("b", lambda: "hit")
         c = Conditional(cond, {True: branch})
 
-        assert c(1) == "hit"
+        result = c(1)
+        assert inspect.isawaitable(result)
+        assert asyncio.run(result) == "hit"
 
     def test_none_as_branch_key(self):
         """None 作为合法分支键值。"""
@@ -260,7 +266,9 @@ class TestFanIn:
         agg = StubNode("agg", lambda x: x)
         fi = FanIn(upstream, agg)
 
-        assert fi(7) == 7
+        result = fi(7)
+        assert inspect.isawaitable(result)
+        assert asyncio.run(result) == 7
 
     def test_error_from_upstream(self):
         def fail(_):
@@ -297,4 +305,5 @@ class TestFanIn:
         fi = FanIn(upstream, agg)
 
         result = fi(7)
-        assert result == "async:7"
+        assert inspect.isawaitable(result)
+        assert asyncio.run(result) == "async:7"

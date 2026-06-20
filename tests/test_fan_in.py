@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.streamlet import ParallelResult, fan_out_args, node
+from streamlet import ParallelResult, fan_out_args, node
 from tests.conftest import add_five, aggregate_sum, multiply, source_data
 
 

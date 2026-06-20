@@ -3,7 +3,7 @@
 import pytest
 from pydantic import BaseModel, ConfigDict
 
-from src.streamlet import (
+from streamlet import (
     ValidationInputException,
     ValidationOutputException,
     custom_validate_call,

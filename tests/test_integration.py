@@ -2,12 +2,21 @@
 
 import asyncio
 import threading
+from pathlib import Path
 
 import pytest
 from dependency_injector.wiring import Provide
 
-from src.streamlet import BaseFlowContext, ParallelResult, node
+from streamlet import BaseFlowContext, ParallelResult, node
 from tests.conftest import increment
+
+
+def test_public_streamlet_import_uses_workspace_source():
+    import streamlet
+
+    expected_path = Path(__file__).resolve().parents[1] / "src/streamlet/__init__.py"
+    assert streamlet.__file__ is not None
+    assert Path(streamlet.__file__).resolve() == expected_path
 
 
 class TestFullPipeline:

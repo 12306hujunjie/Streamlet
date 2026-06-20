@@ -5,8 +5,8 @@ import inspect
 
 import pytest
 
-from src.streamlet import LoopControlException
-from src.streamlet.graph import (
+from streamlet import LoopControlException
+from streamlet.graph import (
     Conditional,
     FanIn,
     Parallel,

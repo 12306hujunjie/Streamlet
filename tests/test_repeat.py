@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.streamlet import LoopControlException, node
+from streamlet import LoopControlException, node
 from tests.conftest import increment
 
 

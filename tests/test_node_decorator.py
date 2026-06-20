@@ -7,7 +7,7 @@ from typing import Annotated
 import pytest
 from dependency_injector.wiring import Provide
 
-from src.streamlet import BaseFlowContext, Node, node
+from streamlet import BaseFlowContext, Node, node
 
 
 class TestNodeDecoratorCallModes:
@@ -106,7 +106,7 @@ class TestNodeDecoratorTypeValidation:
         assert double(5) == 10
 
     def test_invalid_type_raises(self):
-        from src.streamlet import ValidationInputException
+        from streamlet import ValidationInputException
 
         @node
         def double(x: int) -> int:
@@ -116,7 +116,7 @@ class TestNodeDecoratorTypeValidation:
             double("not_int")
 
     def test_invalid_return_type_raises(self):
-        from src.streamlet import ValidationOutputException
+        from streamlet import ValidationOutputException
 
         @node
         def bad_return(x: int) -> str:

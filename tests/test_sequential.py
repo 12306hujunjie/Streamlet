@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.streamlet import node
+from streamlet import node
 from tests.conftest import add_ten, async_add_ten, async_double, double, to_string
 
 

@@ -6,9 +6,9 @@ import time
 
 import pytest
 
-from src.streamlet import BaseFlowContext
-from src.streamlet.context import ContextVarProvider
-from src.streamlet.executor import AsyncExecutor, SyncExecutor
+from streamlet import BaseFlowContext
+from streamlet.context import ContextVarProvider
+from streamlet.executor import AsyncExecutor, SyncExecutor
 
 # ============================================================
 # Stub Node —— 实现 _execute / _execute_async 接口

@@ -5,7 +5,7 @@ import asyncio
 import pytest
 from dependency_injector.wiring import Provide
 
-from src.streamlet import BaseFlowContext, node
+from streamlet import BaseFlowContext, node
 
 
 @pytest.mark.asyncio

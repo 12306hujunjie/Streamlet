@@ -5,8 +5,8 @@ import threading
 
 import pytest
 
-from src.streamlet import BaseFlowContext
-from src.streamlet.context import ContextVarProvider
+from streamlet import BaseFlowContext
+from streamlet.context import ContextVarProvider
 
 
 class TestBaseFlowContext:
@@ -59,6 +59,6 @@ class TestBaseFlowContext:
             ContextVarProvider(dict, copy_policy="deep")
 
     def test_context_provider_is_public_api(self):
-        from src.streamlet import ContextVarProvider as PublicContextVarProvider
+        from streamlet import ContextVarProvider as PublicContextVarProvider
 
         assert PublicContextVarProvider is ContextVarProvider

@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from src.streamlet import FanOutArgs, ParallelResult, fan_out_args, node
+from streamlet import FanOutArgs, ParallelResult, fan_out_args, node
 from tests.conftest import add_five, multiply, source_data
 
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.streamlet import (
+from streamlet import (
     NodeRetryExhaustedException,
     RetryConfig,
     UserBusinessException,

@@ -6,7 +6,7 @@
 
 import pytest
 
-from src.streamlet import BaseFlowContext, node
+from streamlet import BaseFlowContext, node
 
 # ============================================================
 # Fixtures

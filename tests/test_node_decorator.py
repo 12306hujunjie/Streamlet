@@ -125,6 +125,19 @@ class TestNodeDecoratorTypeValidation:
         with pytest.raises(ValidationOutputException):
             bad_return(5)
 
+    def test_custom_return_type_passes(self):
+        class PlainResult:
+            def __init__(self, value: int) -> None:
+                self.value = value
+
+        @node
+        def create_result(x: int) -> PlainResult:
+            return PlainResult(x)
+
+        result = create_result(5)
+        assert isinstance(result, PlainResult)
+        assert result.value == 5
+
 
 class TestNodeProperties:
     """Node 实例的基础属性。"""

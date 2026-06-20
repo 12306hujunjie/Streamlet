@@ -1,7 +1,7 @@
 """Tests for custom_validate_call validation wrapper."""
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from src.streamlet import (
     ValidationInputException,
@@ -120,6 +120,19 @@ class TestPydanticModelValidation:
         result = create_user("Bob", "25")
         assert isinstance(result, UserModel)
         assert result.age == 25
+
+    def test_pydantic_output_uses_model_config_when_call_config_is_passed(self):
+        class LowercaseUserModel(BaseModel):
+            model_config = ConfigDict(str_to_lower=True)
+
+            name: str
+
+        @custom_validate_call(config=ConfigDict(str_to_upper=True))
+        def create_user(name: str) -> LowercaseUserModel:
+            return {"name": name}
+
+        result = create_user("ALICE")
+        assert result.name == "alice"
 
     def test_pydantic_output_validation_fails(self):
         UserModel = self.UserModel

@@ -12,7 +12,13 @@ from contextvars import ContextVar
 from typing import Any, Literal, cast
 
 from dependency_injector import containers, providers
-from pydantic import ConfigDict, TypeAdapter, ValidationError, validate_call
+from pydantic import (
+    ConfigDict,
+    PydanticUserError,
+    TypeAdapter,
+    ValidationError,
+    validate_call,
+)
 
 from .exceptions import ValidationInputException, ValidationOutputException
 from .retry import get_func_name
@@ -123,6 +129,15 @@ class BaseFlowContext(containers.DeclarativeContainer):
     context: providers.Provider = ContextVarProvider(dict)
 
 
+def _build_type_adapter(annotation: Any, config: ConfigDict) -> TypeAdapter[Any]:
+    try:
+        return TypeAdapter(annotation, config=config)
+    except PydanticUserError as e:
+        if e.code == "type-adapter-config-unused":
+            return TypeAdapter(annotation)
+        raise
+
+
 def custom_validate_call(
     validate_return: bool = True,
     config: ConfigDict | None = None,
@@ -132,15 +147,19 @@ def custom_validate_call(
 
     def decorator(func: Callable) -> Callable:
         sig = inspect.signature(func)
+        validation_config = config or ConfigDict(arbitrary_types_allowed=True)
 
         input_validator = validate_call(
             validate_return=False,
-            config=config or ConfigDict(arbitrary_types_allowed=True),
+            config=validation_config,
         )(func)
 
         return_type_adapter = None
         if validate_return and sig.return_annotation != inspect.Signature.empty:
-            return_type_adapter = TypeAdapter(sig.return_annotation)
+            return_type_adapter = _build_type_adapter(
+                sig.return_annotation,
+                validation_config,
+            )
 
         func_name = node_name or get_func_name(func)
 

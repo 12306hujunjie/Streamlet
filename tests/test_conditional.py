@@ -41,6 +41,19 @@ class TestBranchOnBoolean:
         result = flow({"score": score})
         assert result["status"] == expected_status
 
+    def test_branch_receives_no_original_input_or_condition_result(self):
+        @node
+        def choose_branch(data: dict) -> str:
+            return "selected"
+
+        @node
+        def handle_selected() -> str:
+            return "handled"
+
+        flow = choose_branch.branch_on({"selected": handle_selected})
+
+        assert flow({"score": 75}) == "handled"
+
     def test_single_branch(self):
         container = self.container
 

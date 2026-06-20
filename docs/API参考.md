@@ -77,7 +77,9 @@ flow = source.fan_out_to([fetch_orders, fetch_profile])
 
 条件分支。条件节点返回值作为路由键，匹配对应分支节点执行。
 
-分支节点可通过依赖注入读取 `BaseFlowContext.context`，因为 `branch_on` 不向分支节点传递参数。
+`branch_on` 只向条件节点传递调用输入；选中的分支节点以零参数执行。
+框架不会把原始输入或条件返回值传给分支。分支节点需要业务数据时，
+可通过依赖注入读取 `BaseFlowContext.context`。
 
 ### `repeat(times: int, stop_on_error: bool = False) -> Node`
 

@@ -141,6 +141,10 @@ flow = evaluate.branch_on({"pass": handle_pass, "fail": handle_fail})
 print(flow({"score": 75}))  # {"result": "pass", "score": 75}
 ```
 
+`branch_on` 的语义是：条件节点接收调用输入并返回路由键，选中的分支节点
+以零参数执行。框架不会把原始输入或条件返回值传给分支；分支需要业务数据时，
+应通过 `BaseFlowContext.context` 等依赖注入方式读取。
+
 ### 重试机制
 
 ```python

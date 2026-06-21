@@ -6,7 +6,7 @@ import threading
 import pytest
 
 from streamlet import BaseFlowContext
-from streamlet.context import ContextVarProvider
+from streamlet.context import ContextVarProvider, apply_context, capture_context
 
 
 class TestBaseFlowContext:
@@ -57,6 +57,29 @@ class TestBaseFlowContext:
     def test_context_provider_rejects_unknown_copy_policy(self):
         with pytest.raises(ValueError, match="copy_policy"):
             ContextVarProvider(dict, copy_policy="deep")
+
+    def test_context_provider_preserves_initialized_none_value(self):
+        """default_factory 返回 None 时，None 是真实值而不是未初始化哨兵。"""
+        calls = 0
+
+        def make_none():
+            nonlocal calls
+            calls += 1
+            return None
+
+        provider = ContextVarProvider(make_none)
+
+        assert provider() is None
+        assert provider() is None
+        assert calls == 1
+
+        snapshot = capture_context()
+        provider._context_var.set("changed")
+
+        apply_context(snapshot)
+
+        assert provider() is None
+        assert calls == 1
 
     def test_context_provider_is_public_api(self):
         from streamlet import ContextVarProvider as PublicContextVarProvider

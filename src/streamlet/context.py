@@ -30,6 +30,7 @@ _CONTEXTVAR_PROVIDERS: weakref.WeakSet = weakref.WeakSet()
 ContextCopyPolicy = Literal["shallow", "strict"]
 _MUTABLE_VALUE_TYPES = (MutableMapping, MutableSequence, MutableSet, bytearray)
 _IMMUTABLE_CONTAINER_TYPES = (tuple, frozenset)
+_UNSET = object()
 
 
 def _validate_copy_policy(copy_policy: str) -> ContextCopyPolicy:
@@ -71,7 +72,7 @@ class ContextVarProvider(providers.Provider):
         copy_policy: str = "shallow",
     ) -> None:
         super().__init__()
-        self._context_var = ContextVar(f"streamlet_{id(self)}", default=None)
+        self._context_var = ContextVar(f"streamlet_{id(self)}", default=_UNSET)
         self._default_factory = default_factory
         self._copy_policy = _validate_copy_policy(copy_policy)
         _CONTEXTVAR_PROVIDERS.add(self)
@@ -93,7 +94,7 @@ class ContextVarProvider(providers.Provider):
 
     def _provide(self, *args: Any, **kwargs: Any) -> Any:
         value = self._context_var.get()
-        if value is None:
+        if value is _UNSET:
             value = self._default_factory()
             self._context_var.set(value)
         return value
@@ -102,10 +103,15 @@ class ContextVarProvider(providers.Provider):
 def capture_context() -> dict[int, Any]:
     """捕获所有 ContextVarProvider 当前值的快照（fan-out 隔离用）。
 
-    仅捕获已初始化的值（None 表示未初始化，不触发 lazy init）。
+    仅捕获已初始化的值，不触发 lazy init。
     """
 
-    return {id(p): p._context_var.get() for p in list(_CONTEXTVAR_PROVIDERS)}
+    snapshot = {}
+    for provider in list(_CONTEXTVAR_PROVIDERS):
+        value = provider._context_var.get()
+        if value is not _UNSET:
+            snapshot[id(provider)] = value
+    return snapshot
 
 
 def apply_context(snapshot: dict[int, Any]) -> None:
@@ -117,9 +123,9 @@ def apply_context(snapshot: dict[int, Any]) -> None:
     """
 
     for provider in list(_CONTEXTVAR_PROVIDERS):
-        val = snapshot.get(id(provider))
-        if val is None:
-            provider._context_var.set(None)
+        val = snapshot.get(id(provider), _UNSET)
+        if val is _UNSET:
+            provider._context_var.set(_UNSET)
         elif isinstance(val, dict):
             if provider._copy_policy == "strict":
                 _reject_nested_mutable_values(val)

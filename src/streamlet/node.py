@@ -14,6 +14,7 @@ from pydantic import ConfigDict
 from .context import custom_validate_call
 from .graph import Conditional, FanIn, Parallel, Pipeline, Repeat
 from .retry import RetryConfig, get_func_name, retry_decorator
+from .types import RepeatInputMode
 
 logger = __import__("logging").getLogger("streamlet")
 
@@ -143,8 +144,14 @@ class Node:
         cond = Conditional(self, conditions)
         return Node(cond, name=f"{self.name}?")
 
-    def repeat(self, times: int, stop_on_error: bool = False) -> "Node":
-        rep = Repeat(self, times, stop_on_error)
+    def repeat(
+        self,
+        times: int,
+        stop_on_error: bool = False,
+        *,
+        input_mode: RepeatInputMode = RepeatInputMode.PREVIOUS_RESULT,
+    ) -> "Node":
+        rep = Repeat(self, times, stop_on_error, input_mode)
         return Node(rep, name=f"{self.name}×{times}")
 
     def fan_out_in(

@@ -9,6 +9,7 @@ from typing import Any
 
 from .exceptions import LoopControlException
 from .executor import AsyncExecutor, FanOutArgs, ParallelTask, SyncExecutor
+from .types import CallArgs, RepeatInputMode, call_args
 
 logger = logging.getLogger("streamlet")
 
@@ -142,10 +143,34 @@ class Conditional:
         return await ex.arun(self.branches[condition_result])
 
 
+def _validate_repeat_input_mode(input_mode: Any) -> RepeatInputMode:
+    if not isinstance(input_mode, RepeatInputMode):
+        raise TypeError(
+            f"input_mode must be RepeatInputMode, got {type(input_mode).__name__}"
+        )
+    return input_mode
+
+
+def _repeat_call_args(last_result: Any) -> CallArgs:
+    if not isinstance(last_result, CallArgs):
+        raise TypeError(
+            "repeat(input_mode=RepeatInputMode.PREVIOUS_RESULT) requires each "
+            "successful iteration to return call_args(...), got "
+            f"{type(last_result).__name__}"
+        )
+    return last_result
+
+
 class Repeat:
     """循环组合：重复执行 node N 次"""
 
-    def __init__(self, node: Any, times: int, stop_on_error: bool = False) -> None:
+    def __init__(
+        self,
+        node: Any,
+        times: int,
+        stop_on_error: bool = False,
+        input_mode: RepeatInputMode = RepeatInputMode.PREVIOUS_RESULT,
+    ) -> None:
         if isinstance(times, bool) or not isinstance(times, int):
             raise TypeError(f"times must be an integer, got {type(times).__name__}")
         if times <= 0:
@@ -153,6 +178,7 @@ class Repeat:
         self.node = node
         self.times = times
         self.stop_on_error = stop_on_error
+        self.input_mode = _validate_repeat_input_mode(input_mode)
         self._is_async = node._is_async
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
@@ -164,9 +190,18 @@ class Repeat:
     def _sync_run(self, *args: Any, **kwargs: Any) -> Any:
         ex = SyncExecutor()
         last_result = None
+        next_call = call_args(*args, **kwargs)
         for i in range(self.times):
             try:
-                last_result = ex.run(self.node, *args if i == 0 else (last_result,))
+                if i == 0 or self.input_mode is RepeatInputMode.SAME_INPUT:
+                    candidate_result = ex.run(self.node, *args, **kwargs)
+                else:
+                    candidate_result = ex.run(
+                        self.node, *next_call.args, **next_call.kwargs
+                    )
+                if self.input_mode is RepeatInputMode.PREVIOUS_RESULT:
+                    next_call = _repeat_call_args(candidate_result)
+                last_result = candidate_result
             except Exception as e:
                 if self.stop_on_error:
                     raise LoopControlException(
@@ -186,11 +221,18 @@ class Repeat:
     async def _async_run(self, *args: Any, **kwargs: Any) -> Any:
         ex = AsyncExecutor()
         last_result = None
+        next_call = call_args(*args, **kwargs)
         for i in range(self.times):
             try:
-                last_result = await ex.arun(
-                    self.node, *args if i == 0 else (last_result,)
-                )
+                if i == 0 or self.input_mode is RepeatInputMode.SAME_INPUT:
+                    candidate_result = await ex.arun(self.node, *args, **kwargs)
+                else:
+                    candidate_result = await ex.arun(
+                        self.node, *next_call.args, **next_call.kwargs
+                    )
+                if self.input_mode is RepeatInputMode.PREVIOUS_RESULT:
+                    next_call = _repeat_call_args(candidate_result)
+                last_result = candidate_result
             except Exception as e:
                 if self.stop_on_error:
                     raise LoopControlException(

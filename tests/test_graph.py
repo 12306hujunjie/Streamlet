@@ -5,7 +5,7 @@ import inspect
 
 import pytest
 
-from streamlet import LoopControlException
+from streamlet import LoopControlException, call_args
 from streamlet.graph import (
     Conditional,
     FanIn,
@@ -198,17 +198,17 @@ class TestConditional:
 
 class TestRepeat:
     def test_iterations(self):
-        node = StubNode("inc", lambda x: x + 1)
+        node = StubNode("inc", lambda x: call_args(x + 1))
         r = Repeat(node, times=3)
 
-        assert r(0) == 3
+        assert r(0) == call_args(3)
 
     def test_data_accumulation(self):
-        node = StubNode("accum", lambda d: {"count": d.get("count", 0) + 1})
+        node = StubNode("accum", lambda d: call_args({"count": d.get("count", 0) + 1}))
         r = Repeat(node, times=5)
 
         result = r({})
-        assert result == {"count": 5}
+        assert result == call_args({"count": 5})
 
     def test_times_validation(self):
         node = StubNode("x", lambda x: x)
@@ -236,13 +236,13 @@ class TestRepeat:
             counter[0] += 1
             if counter[0] <= 2:
                 raise ValueError("transient")
-            return counter[0]
+            return call_args(counter[0])
 
         node = StubNode("flaky", succeed_after_two_failures)
         r = Repeat(node, times=5, stop_on_error=False)
 
         result = r(None)
-        assert result == 5  # 第 3/4/5 次成功，最后一次 counter=5
+        assert result == call_args(5)  # 第 3/4/5 次成功，最后一次 counter=5
 
 
 # ============================================================

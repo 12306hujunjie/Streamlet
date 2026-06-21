@@ -87,9 +87,39 @@ flow = source.fan_out_to([fetch_orders, fetch_profile])
 框架不会把原始输入或条件返回值传给分支。分支节点需要业务数据时，
 可通过依赖注入读取 `BaseFlowContext.context`。
 
-### `repeat(times: int, stop_on_error: bool = False) -> Node`
+### `repeat(times: int, stop_on_error: bool = False, *, input_mode: RepeatInputMode = RepeatInputMode.PREVIOUS_RESULT) -> Node`
 
-重复执行。`stop_on_error=False`（默认）时，错误后继续使用上一次成功结果；`stop_on_error=True` 时立即抛出 `LoopControlException`。
+重复执行节点，并返回最后一次成功执行的结果。
+
+`input_mode` 必须是 `RepeatInputMode` 枚举：
+
+| 模式 | 行为 |
+|------|------|
+| `RepeatInputMode.PREVIOUS_RESULT` | 默认。第 1 轮执行 `node(*args, **kwargs)`；每轮成功返回值必须是 `call_args(...)`，作为下一轮的 `*args/**kwargs` |
+| `RepeatInputMode.SAME_INPUT` | 每一轮都执行 `node(*args, **kwargs)`，重复使用最初传入的参数 |
+
+```python
+from streamlet import CallArgs, RepeatInputMode, call_args, node
+
+@node
+def step(value: int, factor: int = 1) -> CallArgs:
+    return call_args(value * factor, factor=factor)
+
+assert step.repeat(3)(2, factor=10) == call_args(2000, factor=10)
+
+@node
+def load(source: str, limit: int = 10) -> list[str]:
+    return fetch_batch(source, limit=limit)
+
+flow = load.repeat(3, input_mode=RepeatInputMode.SAME_INPUT)
+result = flow("orders", limit=50)
+```
+
+`call_args(*args, **kwargs)` 会创建显式的下一轮调用参数。`PREVIOUS_RESULT` 不会自动展开普通 `tuple` 或 `dict`；这些类型会被视为业务返回值，并在多轮 repeat 中触发错误。
+
+`stop_on_error=False`（默认）时，单次迭代失败会记录 warning 并继续循环；下一次迭代仍按 `input_mode` 决定输入：`PREVIOUS_RESULT` 使用最近一次成功返回的 `call_args(...)`，`SAME_INPUT` 继续使用原始参数。若所有迭代都失败，返回 `None`。
+
+`stop_on_error=True` 时，任一迭代失败都会立即抛出 `LoopControlException`。
 
 ## RetryConfig
 

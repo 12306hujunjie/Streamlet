@@ -2,13 +2,13 @@
 
 import pytest
 
-from streamlet import LoopControlException, node
+from streamlet import CallArgs, LoopControlException, RepeatInputMode, call_args, node
 from tests.conftest import increment
 
 
 @node
-def double_value(data: dict) -> dict:
-    return {"value": data["value"] * 2}
+def double_value(data: dict) -> CallArgs:
+    return call_args({"value": data["value"] * 2})
 
 
 @node
@@ -17,20 +17,25 @@ def failing_node(data: dict) -> dict:
 
 
 class TestRepeatBasic:
+    def test_repeat_public_protocols_come_from_public_module(self):
+        assert RepeatInputMode.__module__ == "streamlet.types"
+        assert CallArgs.__module__ == "streamlet.types"
+        assert call_args.__module__ == "streamlet.types"
+
     def test_repeat_n_times(self):
         flow = increment.repeat(3)
         result = flow({"value": 0})
-        assert result["value"] == 3
+        assert result == call_args({"value": 3})
 
     def test_repeat_once(self):
         flow = increment.repeat(1)
         result = flow({"value": 0})
-        assert result["value"] == 1
+        assert result == call_args({"value": 1})
 
     def test_repeat_preserves_data_flow(self):
         flow = double_value.repeat(3)
         result = flow({"value": 1})
-        assert result["value"] == 8  # 1*2=2, 2*2=4, 4*2=8
+        assert result == call_args({"value": 8})  # 1*2=2, 2*2=4, 4*2=8
 
     def test_repeat_zero_raises(self):
         with pytest.raises(ValueError, match="Repeat times"):
@@ -68,32 +73,151 @@ class TestRepeatErrorHandling:
 class TestRepeatWithState:
     def test_accumulation_over_iterations(self):
         @node
-        def accumulate(data: dict) -> dict:
+        def accumulate(data: dict) -> CallArgs:
             items = data.get("items", [])
             count = len(items) + 1
-            return {"items": items + [count], "count": count}
+            return call_args({"items": items + [count], "count": count})
 
         flow = accumulate.repeat(5)
         result = flow({})
-        assert result["count"] == 5
-        assert result["items"] == [1, 2, 3, 4, 5]
+        assert result == call_args({"items": [1, 2, 3, 4, 5], "count": 5})
 
     def test_repeat_with_initial_data(self):
         flow = double_value.repeat(2)
         result = flow({"value": 3})
-        assert result["value"] == 12  # 3*2=6, 6*2=12
+        assert result == call_args({"value": 12})  # 3*2=6, 6*2=12
+
+    def test_previous_result_uses_call_args_args_and_kwargs(self):
+        calls: list[tuple[tuple[int, ...], int]] = []
+
+        @node
+        def sum_values(*values: int, scale: int = 1):
+            calls.append((values, scale))
+            return call_args(sum(values) * scale + 1, scale=scale)
+
+        flow = sum_values.repeat(3)
+
+        assert flow(1, 2, scale=10) == call_args(3111, scale=10)
+        assert calls == [
+            ((1, 2), 10),
+            ((31,), 10),
+            ((311,), 10),
+        ]
+
+    def test_previous_result_requires_call_args_between_iterations(self):
+        @node
+        def increment_value(value: int) -> int:
+            return value + 1
+
+        flow = increment_value.repeat(2, stop_on_error=True)
+
+        with pytest.raises(LoopControlException) as exc_info:
+            flow(1)
+        assert exc_info.value.context["iteration"] == 1
+        assert isinstance(exc_info.value.__cause__, TypeError)
+        assert "each successful iteration" in str(exc_info.value.__cause__)
+        assert "got int" in str(exc_info.value.__cause__)
+
+    def test_previous_result_rejects_non_call_args_as_success_result(self):
+        @node
+        def increment_value(value: int) -> int:
+            return value + 1
+
+        flow = increment_value.repeat(2)
+
+        assert flow(1) is None
+
+    def test_same_input_repeat_reuses_original_args_and_kwargs(self):
+        calls: list[tuple[tuple[int, ...], int]] = []
+
+        @node
+        def sum_values(*values: int, scale: int = 1) -> int:
+            calls.append((values, scale))
+            return sum(values) * scale
+
+        flow = sum_values.repeat(3, input_mode=RepeatInputMode.SAME_INPUT)
+
+        assert flow(1, 2, scale=10) == 30
+        assert calls == [
+            ((1, 2), 10),
+            ((1, 2), 10),
+            ((1, 2), 10),
+        ]
+
+    def test_repeat_input_mode_must_be_enum(self):
+        with pytest.raises(TypeError, match="input_mode"):
+            increment.repeat(2, input_mode="same_input")  # type: ignore[arg-type]
 
 
 class TestRepeatAsync:
     @pytest.mark.asyncio
     async def test_async_repeat(self):
         @node
-        async def async_increment(data: dict) -> dict:
-            return {"value": data.get("value", 0) + 1}
+        async def async_increment(data: dict) -> CallArgs:
+            return call_args({"value": data.get("value", 0) + 1})
 
         flow = async_increment.repeat(3)
         result = await flow({"value": 0})
-        assert result["value"] == 3
+        assert result == call_args({"value": 3})
+
+    @pytest.mark.asyncio
+    async def test_async_previous_result_uses_call_args_args_and_kwargs(self):
+        calls: list[tuple[tuple[int, ...], int]] = []
+
+        @node
+        async def async_sum_values(*values: int, scale: int = 1):
+            calls.append((values, scale))
+            return call_args(sum(values) * scale + 1, scale=scale)
+
+        flow = async_sum_values.repeat(3)
+
+        assert await flow(1, 2, scale=10) == call_args(3111, scale=10)
+        assert calls == [
+            ((1, 2), 10),
+            ((31,), 10),
+            ((311,), 10),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_async_previous_result_requires_call_args_between_iterations(self):
+        @node
+        async def async_increment_value(value: int) -> int:
+            return value + 1
+
+        flow = async_increment_value.repeat(2, stop_on_error=True)
+
+        with pytest.raises(LoopControlException) as exc_info:
+            await flow(1)
+        assert exc_info.value.context["iteration"] == 1
+        assert isinstance(exc_info.value.__cause__, TypeError)
+
+    @pytest.mark.asyncio
+    async def test_async_previous_result_rejects_non_call_args_as_success_result(self):
+        @node
+        async def async_increment_value(value: int) -> int:
+            return value + 1
+
+        flow = async_increment_value.repeat(2)
+
+        assert await flow(1) is None
+
+    @pytest.mark.asyncio
+    async def test_async_same_input_repeat_reuses_original_args_and_kwargs(self):
+        calls: list[tuple[tuple[int, ...], int]] = []
+
+        @node
+        async def async_sum_values(*values: int, scale: int = 1) -> int:
+            calls.append((values, scale))
+            return sum(values) * scale
+
+        flow = async_sum_values.repeat(3, input_mode=RepeatInputMode.SAME_INPUT)
+
+        assert await flow(1, 2, scale=10) == 30
+        assert calls == [
+            ((1, 2), 10),
+            ((1, 2), 10),
+            ((1, 2), 10),
+        ]
 
     @pytest.mark.asyncio
     async def test_async_repeat_stop_on_error(self):

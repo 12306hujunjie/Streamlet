@@ -39,7 +39,7 @@ result = double.then(add_ten)(5)  # 20
 | `.fan_in(aggregator)` | 聚合并行结果 | `flow.fan_in(merge)()` |
 | `.fan_out_in([nodes], agg)` | 扇出 + 聚合 | `a.fan_out_in([b, c], merge)()` |
 | `.branch_on({key: node})` | 条件分支 | `a.branch_on({True: b, False: c})()` |
-| `.repeat(times)` | 重复执行 | `a.repeat(3)(data)` |
+| `.repeat(times, input_mode=RepeatInputMode.PREVIOUS_RESULT)` | 重复执行 | `a.repeat(3)(data)` |
 
 `fan_out_to` / `fan_out_in` 的 `executor` 用于选择并行调度策略：
 `"thread"` 使用线程池，适合同步或阻塞型 target；`"async"` 使用
@@ -47,6 +47,28 @@ result = double.then(add_ten)(5)  # 20
 target 在 `"async"` executor 下会直接运行在当前 event loop 中，不会自动放入
 线程池，CPU 或阻塞 I/O 会阻塞 event loop。`"auto"` 会在全同步节点时选择
 `"thread"`，在包含异步节点时选择 `"async"`。
+
+`repeat` 默认使用 `RepeatInputMode.PREVIOUS_RESULT`：第 1 轮执行
+`node(*args, **kwargs)`，每轮成功返回值必须是 `call_args(...)`，用于指定下一轮
+的 `*args/**kwargs`。如果每轮都要使用最初传入的参数，使用
+`RepeatInputMode.SAME_INPUT`：
+
+```python
+from streamlet import CallArgs, RepeatInputMode, call_args, node
+
+@node
+def step(value: int, factor: int = 1) -> CallArgs:
+    return call_args(value * factor, factor=factor)
+
+assert step.repeat(3)(2, factor=10) == call_args(2000, factor=10)
+
+@node
+def collect(source: str, limit: int = 10) -> list[str]:
+    return fetch_batch(source, limit=limit)
+
+flow = collect.repeat(3, input_mode=RepeatInputMode.SAME_INPUT)
+results = flow("orders", limit=50)
+```
 
 ## 示例
 

@@ -6,7 +6,7 @@
 
 import pytest
 
-from streamlet import BaseFlowContext, node
+from streamlet import BaseFlowContext, CallArgs, call_args, node
 
 # ============================================================
 # Fixtures
@@ -91,5 +91,5 @@ async def async_add_ten(x: int) -> int:
 
 
 @node
-def increment(data: dict) -> dict:
-    return {"value": data.get("value", 0) + 1}
+def increment(data: dict) -> CallArgs:
+    return call_args({"value": data.get("value", 0) + 1})

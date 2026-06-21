@@ -204,7 +204,7 @@ class TestLargeDataHandling:
     def test_many_iterations_repeat(self):
         flow = increment.repeat(100)
         result = flow({"value": 0})
-        assert result["value"] == 100
+        assert result.args == ({"value": 100},)
 
     def test_many_targets_fan_out(self):
         @node

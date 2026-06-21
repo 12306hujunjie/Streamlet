@@ -53,6 +53,17 @@ def _validate_max_workers(value: Any) -> int | None:
     return value
 
 
+def _reject_sync_awaitable(result: Any, node_name: str) -> None:
+    if not inspect.isawaitable(result):
+        return
+    if inspect.iscoroutine(result):
+        result.close()
+    raise TypeError(
+        f"sync node '{node_name}' returned an awaitable; "
+        "define the node function with 'async def' instead"
+    )
+
+
 class Node:
     """用户唯一接触的类型。_func 可以是原始函数或 Graph 内部类。"""
 
@@ -82,19 +93,25 @@ class Node:
             else:
                 return self._func(*args, **kwargs)
         else:
-            return self._func(*args, **kwargs)
+            result = self._func(*args, **kwargs)
+            _reject_sync_awaitable(result, self.name)
+            return result
 
     # === 内部接口：供 Executor 使用 ===
 
     def _execute(self, *args: Any, **kwargs: Any) -> Any:
         result = self._func(*args, **kwargs)
-        if inspect.iscoroutine(result):
+        if not self._is_async:
+            _reject_sync_awaitable(result, self.name)
+        elif inspect.iscoroutine(result):
             return asyncio.run(result)
         return result
 
     async def _execute_async(self, *args: Any, **kwargs: Any) -> Any:
         result = self._func(*args, **kwargs)
-        if inspect.iscoroutine(result):
+        if not self._is_async:
+            _reject_sync_awaitable(result, self.name)
+        elif inspect.isawaitable(result):
             return await result
         return result
 

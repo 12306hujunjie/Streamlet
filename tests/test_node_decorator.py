@@ -10,6 +10,10 @@ from dependency_injector.wiring import Provide
 from streamlet import BaseFlowContext, Node, node
 
 
+async def _resolve_value(value: int) -> int:
+    return value
+
+
 class TestNodeDecoratorCallModes:
     def test_node_without_parentheses(self):
         @node
@@ -48,6 +52,27 @@ class TestNodeDecoratorCallModes:
 
 
 class TestNodeDecoratorAsync:
+    def test_sync_node_returning_coroutine_is_rejected_from_sync_entrypoints(self):
+        @node
+        def func(x: int):
+            return _resolve_value(x)
+
+        with pytest.raises(TypeError, match="sync node 'func' returned an awaitable"):
+            func(5)
+        with pytest.raises(TypeError, match="sync node 'func' returned an awaitable"):
+            func._execute(5)
+
+    @pytest.mark.asyncio
+    async def test_sync_node_returning_coroutine_is_rejected_in_event_loop(self):
+        @node
+        def func(x: int):
+            return _resolve_value(x)
+
+        with pytest.raises(TypeError, match="sync node 'func' returned an awaitable"):
+            func._execute(5)
+        with pytest.raises(TypeError, match="sync node 'func' returned an awaitable"):
+            await func._execute_async(5)
+
     @pytest.mark.asyncio
     async def test_async_node_without_parentheses(self):
         @node

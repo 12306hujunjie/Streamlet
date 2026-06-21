@@ -1,5 +1,8 @@
 """Tests for custom_validate_call validation wrapper."""
 
+import importlib.util
+import sys
+
 import pytest
 from pydantic import BaseModel, ConfigDict
 
@@ -143,6 +146,54 @@ class TestPydanticModelValidation:
 
         with pytest.raises(ValidationOutputException):
             create_user("Bob", 25)
+
+    def test_postponed_return_annotation_validates_output_model(self, tmp_path):
+        module_path = tmp_path / "future_annotations_module.py"
+        module_path.write_text(
+            """
+from __future__ import annotations
+
+from pydantic import BaseModel
+
+from streamlet import custom_validate_call
+
+
+class User(BaseModel):
+    name: str
+    age: int
+
+
+@custom_validate_call()
+def create_user() -> User:
+    return {"name": "Alice", "age": "30"}
+
+
+@custom_validate_call()
+def create_invalid_user() -> User:
+    return 42
+""",
+            encoding="utf-8",
+        )
+        module_name = "future_annotations_module"
+        spec = importlib.util.spec_from_file_location(
+            module_name,
+            module_path,
+        )
+        assert spec is not None
+        assert spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.modules.pop(module_name, None)
+
+        result = module.create_user()
+
+        assert isinstance(result, module.User)
+        assert result.age == 30
+        with pytest.raises(ValidationOutputException):
+            module.create_invalid_user()
 
 
 class TestAsyncValidation:

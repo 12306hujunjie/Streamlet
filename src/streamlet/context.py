@@ -9,7 +9,7 @@ import logging
 import weakref
 from collections.abc import Callable, MutableMapping, MutableSequence, MutableSet
 from contextvars import ContextVar
-from typing import Any, Literal, cast
+from typing import Any, Literal, cast, get_type_hints
 
 from dependency_injector import containers, providers
 from pydantic import (
@@ -156,8 +156,10 @@ def custom_validate_call(
 
         return_type_adapter = None
         if validate_return and sig.return_annotation != inspect.Signature.empty:
+            type_hints = get_type_hints(func, include_extras=True)
+            return_annotation = type_hints.get("return", sig.return_annotation)
             return_type_adapter = _build_type_adapter(
-                sig.return_annotation,
+                return_annotation,
                 validation_config,
             )
 

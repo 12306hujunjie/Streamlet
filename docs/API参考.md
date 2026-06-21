@@ -226,6 +226,38 @@ custom_validate_call(
 
 验证装饰器。输入校验失败抛出 `ValidationInputException`，返回值校验失败抛出 `ValidationOutputException`。依赖注入由 `@node` 在函数签名包含 `Provide[...]` / `Provider[...]` 默认值或 `Annotated[..., Provide[...]]` 元数据时按需启用；单独使用 `custom_validate_call` 不解析依赖。
 
+返回值校验基于函数的返回类型注解，支持 `from __future__ import annotations`
+下的延迟注解，也会保留 `Annotated[...]` 元数据给 Pydantic 处理。因此可以在
+返回类型里使用 Pydantic 模型和 `Field` 约束：
+
+```python
+from __future__ import annotations
+
+from typing import Annotated
+
+from pydantic import BaseModel, Field
+from streamlet import node
+
+
+class User(BaseModel):
+    name: str
+    age: int
+
+
+@node
+def create_user() -> User:
+    return {"name": "Alice", "age": "30"}
+
+
+@node
+def positive_score() -> Annotated[int, Field(gt=0)]:
+    return 100
+```
+
+更多 Pydantic 校验规则见
+[TypeAdapter](https://docs.pydantic.dev/latest/concepts/type_adapter/) 和
+[Annotated pattern](https://docs.pydantic.dev/latest/concepts/fields/#the-annotated-pattern)。
+
 ## retry_decorator
 
 ```python

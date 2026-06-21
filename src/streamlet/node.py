@@ -40,6 +40,18 @@ def _validate_node_mapping(values: Any, param_name: str) -> dict[Any, "Node"]:
     return values
 
 
+def _validate_max_workers(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(
+            f"max_workers must be an int or None, got {type(value).__name__}"
+        )
+    if value <= 0:
+        raise ValueError("max_workers must be greater than 0")
+    return value
+
+
 class Node:
     """用户唯一接触的类型。_func 可以是原始函数或 Graph 内部类。"""
 
@@ -108,6 +120,7 @@ class Node:
         nodes = _validate_node_list(nodes, "nodes")
         if not nodes:
             raise ValueError("Target nodes list cannot be empty")
+        max_workers = _validate_max_workers(max_workers)
         parallel = Parallel(
             self, nodes, executor_type=executor_lower, max_workers=max_workers
         )

@@ -189,6 +189,16 @@ class TestNodeFluentValidation:
         with pytest.raises(TypeError, match=r"nodes\[0\] must be a Node"):
             source.fan_out_to([object()])
 
+    @pytest.mark.parametrize("max_workers", [True, 1.5])
+    def test_fan_out_to_rejects_non_integer_max_workers(self, source, max_workers):
+        with pytest.raises(TypeError, match="max_workers must be an int or None"):
+            source.fan_out_to([source], max_workers=max_workers)
+
+    @pytest.mark.parametrize("max_workers", [0, -1])
+    def test_fan_out_to_rejects_non_positive_max_workers(self, source, max_workers):
+        with pytest.raises(ValueError, match="max_workers must be greater than 0"):
+            source.fan_out_to([source], max_workers=max_workers)
+
     def test_branch_on_rejects_non_dict_conditions(self, source):
         with pytest.raises(TypeError, match="conditions must be a dict"):
             source.branch_on(object())

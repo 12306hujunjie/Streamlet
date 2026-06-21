@@ -65,6 +65,22 @@ class TestNodeDecoratorAsync:
         assert func.name == "async_node"
         assert await func(5) == 10
 
+    @pytest.mark.asyncio
+    async def test_async_node_propagates_sync_runtime_error_once_in_event_loop(self):
+        attempts = 0
+
+        def fail_sync() -> None:
+            nonlocal attempts
+            attempts += 1
+            raise RuntimeError("user failure")
+
+        func = Node(fail_sync, name="fail_sync", is_async=True)
+
+        with pytest.raises(RuntimeError, match="user failure"):
+            func()
+
+        assert attempts == 1
+
 
 class TestNodeDecoratorWithDI:
     def test_node_with_dependency_injection(self):

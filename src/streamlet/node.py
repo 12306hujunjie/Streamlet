@@ -77,9 +77,10 @@ class Node:
         if self._is_async:
             try:
                 asyncio.get_running_loop()
-                return self._func(*args, **kwargs)
             except RuntimeError:
                 return asyncio.run(self._func(*args, **kwargs))
+            else:
+                return self._func(*args, **kwargs)
         else:
             return self._func(*args, **kwargs)
 

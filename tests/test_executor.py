@@ -428,6 +428,20 @@ class TestStrictContextPolicy:
         finally:
             context.clear()
 
+    def test_thread_fan_out_rejects_mutable_value_inside_tuple(self):
+        container = self._strict_context()
+        context = container.context()
+        context["items"] = ("header", [])
+
+        ex = SyncExecutor()
+        node = StubNode("reader", lambda x: x)
+
+        try:
+            with pytest.raises(ValueError, match="context key 'items'.*nested mutable"):
+                ex.gather([(node, 1)])
+        finally:
+            context.clear()
+
     @pytest.mark.asyncio
     async def test_async_fan_out_rejects_nested_mutable_context_value(self):
         container = self._strict_context()

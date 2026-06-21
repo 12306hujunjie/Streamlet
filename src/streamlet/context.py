@@ -29,6 +29,7 @@ logger = logging.getLogger("streamlet")
 _CONTEXTVAR_PROVIDERS: weakref.WeakSet = weakref.WeakSet()
 ContextCopyPolicy = Literal["shallow", "strict"]
 _MUTABLE_VALUE_TYPES = (MutableMapping, MutableSequence, MutableSet, bytearray)
+_IMMUTABLE_CONTAINER_TYPES = (tuple, frozenset)
 
 
 def _validate_copy_policy(copy_policy: str) -> ContextCopyPolicy:
@@ -39,12 +40,24 @@ def _validate_copy_policy(copy_policy: str) -> ContextCopyPolicy:
     return cast("ContextCopyPolicy", copy_policy)
 
 
+def _find_nested_mutable_type(value: Any) -> type[Any] | None:
+    if isinstance(value, _MUTABLE_VALUE_TYPES):
+        return type(value)
+    if isinstance(value, _IMMUTABLE_CONTAINER_TYPES):
+        for item in value:
+            mutable_type = _find_nested_mutable_type(item)
+            if mutable_type is not None:
+                return mutable_type
+    return None
+
+
 def _reject_nested_mutable_values(value: dict[Any, Any]) -> None:
     for key, item in value.items():
-        if isinstance(item, _MUTABLE_VALUE_TYPES):
+        mutable_type = _find_nested_mutable_type(item)
+        if mutable_type is not None:
             raise ValueError(
                 f"context key {key!r} contains nested mutable value "
-                f"of type {type(item).__name__}; "
+                f"of type {mutable_type.__name__}; "
                 "fan-out context isolation only shallow-copies the top-level dict"
             )
 
@@ -112,14 +125,14 @@ def apply_context(snapshot: dict[int, Any]) -> None:
                 _reject_nested_mutable_values(val)
             provider._context_var.set(dict(val))
         else:
-            if provider._copy_policy == "strict" and isinstance(
-                val, _MUTABLE_VALUE_TYPES
-            ):
-                raise ValueError(
-                    f"context value contains mutable value of type "
-                    f"{type(val).__name__}; fan-out context isolation cannot "
-                    "copy non-dict mutable values safely"
-                )
+            if provider._copy_policy == "strict":
+                mutable_type = _find_nested_mutable_type(val)
+                if mutable_type is not None:
+                    raise ValueError(
+                        f"context value contains mutable value of type "
+                        f"{mutable_type.__name__}; fan-out context isolation cannot "
+                        "copy non-dict mutable values safely"
+                    )
             provider._context_var.set(val)
 
 

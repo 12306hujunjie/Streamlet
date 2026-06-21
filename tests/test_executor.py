@@ -2,7 +2,7 @@
 
 import asyncio
 import inspect
-import time
+import threading
 
 import pytest
 
@@ -69,20 +69,24 @@ class TestSyncExecutorGather:
 
     def test_gather_multiple_different_nodes(self):
         """3 个不同节点并发 → 3 个结果。"""
-        slow = StubNode("slow", lambda x: (time.sleep(0.05), x * 2)[1])
-        fast = StubNode("fast", lambda x: x + 10)
-        triple = StubNode("triple", lambda x: x * 3)
+        barrier = threading.Barrier(3)
+
+        def wait_for_peers(result):
+            barrier.wait(timeout=2)
+            return result
+
+        slow = StubNode("slow", lambda x: wait_for_peers(x * 2))
+        fast = StubNode("fast", lambda x: wait_for_peers(x + 10))
+        triple = StubNode("triple", lambda x: wait_for_peers(x * 3))
         ex = SyncExecutor(max_workers=4)
 
-        start = time.time()
         results = ex.gather([(slow, 1), (fast, 2), (triple, 3)])
-        elapsed = time.time() - start
 
         assert len(results) == 3
         assert results["slow"].result == 2
         assert results["fast"].result == 12
         assert results["triple"].result == 9
-        assert elapsed < 0.15  # 并发而非串行
+        assert all(result.success for result in results.values())
 
     def test_gather_same_node_auto_dedup(self):
         """同名节点自动追加后缀 [1], [2], ..."""
@@ -181,34 +185,39 @@ class TestAsyncExecutorAGather:
 
     @pytest.mark.asyncio
     async def test_agather_multiple_different_nodes(self):
-        """3 个不同异步节点并发 → 耗时 ~50ms，串行需 ~150ms。"""
+        """3 个不同异步节点并发到达同一等待点。"""
+        started: set[str] = set()
+        all_started = asyncio.Event()
+
+        async def wait_for_peers(name: str, result: int) -> int:
+            started.add(name)
+            if len(started) == 3:
+                all_started.set()
+            await asyncio.wait_for(all_started.wait(), timeout=2)
+            return result
 
         async def slow(x):
-            await asyncio.sleep(0.05)
-            return x * 2
+            return await wait_for_peers("slow", x * 2)
 
         async def fast(x):
-            await asyncio.sleep(0.05)
-            return x + 10
+            return await wait_for_peers("fast", x + 10)
 
         async def triple(x):
-            await asyncio.sleep(0.05)
-            return x * 3
+            return await wait_for_peers("triple", x * 3)
 
         a = StubNode("slow", slow, is_async=True)
         b = StubNode("fast", fast, is_async=True)
         c = StubNode("triple", triple, is_async=True)
         ex = AsyncExecutor()
 
-        start = time.time()
         results = await ex.agather([(a, 1), (b, 2), (c, 3)])
-        elapsed = time.time() - start
 
         assert len(results) == 3
         assert results["slow"].result == 2
         assert results["fast"].result == 12
         assert results["triple"].result == 9
-        assert elapsed < 0.10  # 并发 ~50ms，串行 ~150ms
+        assert started == {"slow", "fast", "triple"}
+        assert all(result.success for result in results.values())
 
     @pytest.mark.asyncio
     async def test_agather_same_node_auto_dedup(self):

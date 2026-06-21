@@ -1,7 +1,7 @@
 """Tests for Node.fan_out_to() parallel distribution."""
 
 import asyncio
-import time
+import threading
 
 import pytest
 
@@ -189,24 +189,25 @@ class TestFanOutWithAsyncSource:
 
     @pytest.mark.asyncio
     async def test_async_source_thread_executor_does_not_block_event_loop(self):
+        barrier = threading.Barrier(2)
+
         @node
         async def async_source(x: int) -> dict:
             return {"value": x}
 
         @node
         def slow_target(data: dict) -> int:
-            time.sleep(0.1)
+            barrier.wait(timeout=2)
             return data["value"]
 
         flow = async_source.fan_out_to([slow_target], executor="thread")
 
-        start = time.perf_counter()
         first, second = await asyncio.gather(flow(1), flow(2))
-        elapsed = time.perf_counter() - start
 
         assert first["slow_target"].result == 1
         assert second["slow_target"].result == 2
-        assert elapsed < 0.18
+        assert first["slow_target"].success is True
+        assert second["slow_target"].success is True
 
 
 class TestFanOutArgs:

@@ -146,7 +146,7 @@ class Repeat:
     """循环组合：重复执行 node N 次"""
 
     def __init__(self, node: Any, times: int, stop_on_error: bool = False) -> None:
-        if not isinstance(times, int):
+        if isinstance(times, bool) or not isinstance(times, int):
             raise TypeError(f"times must be an integer, got {type(times).__name__}")
         if times <= 0:
             raise ValueError("Repeat times must be greater than 0")

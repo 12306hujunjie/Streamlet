@@ -44,6 +44,11 @@ class TestRepeatBasic:
         with pytest.raises(TypeError, match="times"):
             increment.repeat("invalid")  # type: ignore[arg-type]
 
+    @pytest.mark.parametrize("times", [True, False])
+    def test_repeat_bool_times_raises(self, times):
+        with pytest.raises(TypeError, match="times"):
+            increment.repeat(times)
+
 
 class TestRepeatErrorHandling:
     def test_stop_on_error_true(self):

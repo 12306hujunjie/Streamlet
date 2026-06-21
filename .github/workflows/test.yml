@@ -61,14 +61,13 @@ jobs:
       run: |
         pdm install -G dev
 
-    # 6. 代码质量检查（可选）
-    - name: Lint with flake8
+    # 6. 质量门禁
+    - name: Run quality gates
       run: |
-        # 停止构建如果有Python语法错误或未定义的名称
-        pdm run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # 将其他问题作为警告处理
-        pdm run flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-      continue-on-error: true
+        pdm run ruff check src/ tests/
+        pdm run ruff format --check src/ tests/
+        pdm run mypy src/streamlet/
+        pdm run bandit -r src/
 
     # 7. 执行单元测试并生成覆盖率报告
     - name: Run tests with pytest

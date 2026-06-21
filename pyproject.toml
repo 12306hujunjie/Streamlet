@@ -38,7 +38,6 @@ dev = [
     "pytest>=8.4.1",
     "pytest-cov>=6.0.0",
     "pytest-html>=4.1.1",
-    "flake8>=7.1.1",
     "pre-commit>=4.0.1",
     "ruff>=0.12.9",
     "mypy>=1.13.0",

@@ -59,6 +59,13 @@ jobs:
             exit 1
           fi
 
+      - name: Run quality gates
+        run: |
+          pdm run ruff check src/ tests/
+          pdm run ruff format --check src/ tests/
+          pdm run mypy src/streamlet/
+          pdm run bandit -r src/
+
       - name: Run tests
         run: |
           pdm run pytest

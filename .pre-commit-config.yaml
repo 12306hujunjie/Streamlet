@@ -40,31 +40,21 @@ repos:
         name: Check docstring is first
         types: [python]
 
-  # MyPy type checking (currently disabled due to incomplete type annotations)
-  # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.13.0
-  #   hooks:
-  #     - id: mypy
-  #       name: MyPy Type Checker
-  #       additional_dependencies:
-  #         - pydantic>=2.11.7
-  #         - dependency-injector>=4.48.1
-  #         - types-setuptools
-  #       args: [--ignore-missing-imports, --show-error-codes, --explicit-package-bases]
-  #       files: ^src/
-
-  # Security checks
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.10
-    hooks:
-      - id: bandit
-        name: Bandit Security Linter
-        args: [-r, --skip, B101]
-        exclude: ^tests/
-
-  # Run tests
+  # Project quality gates
   - repo: local
     hooks:
+      - id: mypy
+        name: MyPy Type Checker
+        entry: pdm run mypy src/streamlet/
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: bandit
+        name: Bandit Security Linter
+        entry: pdm run bandit -r src/
+        language: system
+        types: [python]
+        pass_filenames: false
       - id: pytest
         name: Run tests
         entry: pdm run pytest

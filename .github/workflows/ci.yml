@@ -29,9 +29,12 @@ jobs:
     - name: Install dependencies
       run: pdm install -G dev
 
+    - name: Run quality gates
+      run: |
+        pdm run ruff check src/ tests/
+        pdm run ruff format --check src/ tests/
+        pdm run mypy src/streamlet/
+        pdm run bandit -r src/
+
     - name: Run tests with coverage
       run: pdm run pytest tests/ --verbose --cov=streamlet --cov-report=term-missing
-
-    - name: Check code quality
-      run: pdm run ruff check src/ tests/
-      continue-on-error: true

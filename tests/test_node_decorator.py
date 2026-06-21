@@ -1,5 +1,6 @@
 """Tests for @node decorator with various parameter combinations."""
 
+import inspect
 import pickle
 import warnings
 from typing import Annotated
@@ -182,6 +183,22 @@ class TestNodeDecoratorTypeValidation:
 
 class TestNodeProperties:
     """Node 实例的基础属性。"""
+
+    def test_decorated_node_preserves_function_metadata_and_signature(self):
+        def my_func(x: int, label: str = "value") -> str:
+            """Build a labelled value."""
+            return f"{label}:{x}"
+
+        decorated = node(name="custom_name")(my_func)
+
+        assert decorated.name == "custom_name"
+        assert decorated.__name__ == "my_func"
+        assert decorated.__wrapped__ is my_func
+        assert decorated.__doc__ == "Build a labelled value."
+        assert decorated.__annotations__ == {"x": int, "label": str, "return": str}
+        assert str(inspect.signature(decorated)) == (
+            "(x: int, label: str = 'value') -> str"
+        )
 
     def test_node_repr(self):
         @node

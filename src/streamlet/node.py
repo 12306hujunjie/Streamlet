@@ -268,7 +268,9 @@ def node_decorator(
             decorators.append(_di_inject)
 
         decorated_func = functools.reduce(lambda func, deco: deco(func), decorators, f)
-        return Node(func=decorated_func, name=node_name, is_async=is_original_async)
+        node_obj = Node(func=decorated_func, name=node_name, is_async=is_original_async)
+        functools.update_wrapper(node_obj, f, updated=())
+        return node_obj
 
     if func is None:
         return decorator

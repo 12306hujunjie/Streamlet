@@ -104,28 +104,23 @@ class TestRepeatWithState:
             ((311,), 10),
         ]
 
-    def test_previous_result_requires_call_args_between_iterations(self):
+    def test_previous_result_passes_plain_result_to_next_iteration(self):
         @node
         def increment_value(value: int) -> int:
             return value + 1
 
-        flow = increment_value.repeat(2, stop_on_error=True)
+        flow = increment_value.repeat(3)
 
-        with pytest.raises(LoopControlException) as exc_info:
-            flow(1)
-        assert exc_info.value.context["iteration"] == 1
-        assert isinstance(exc_info.value.__cause__, TypeError)
-        assert "each successful iteration" in str(exc_info.value.__cause__)
-        assert "got int" in str(exc_info.value.__cause__)
+        assert flow(0) == 3
 
-    def test_previous_result_rejects_non_call_args_as_success_result(self):
+    def test_previous_result_keeps_plain_dict_as_single_argument(self):
         @node
-        def increment_value(value: int) -> int:
-            return value + 1
+        def increment_payload(payload: dict[str, int]) -> dict[str, int]:
+            return {"value": payload["value"] + 1}
 
-        flow = increment_value.repeat(2)
+        flow = increment_payload.repeat(2)
 
-        assert flow(1) is None
+        assert flow({"value": 0}) == {"value": 2}
 
     def test_same_input_repeat_reuses_original_args_and_kwargs(self):
         calls: list[tuple[tuple[int, ...], int]] = []
@@ -179,27 +174,14 @@ class TestRepeatAsync:
         ]
 
     @pytest.mark.asyncio
-    async def test_async_previous_result_requires_call_args_between_iterations(self):
+    async def test_async_previous_result_passes_plain_result_to_next_iteration(self):
         @node
         async def async_increment_value(value: int) -> int:
             return value + 1
 
-        flow = async_increment_value.repeat(2, stop_on_error=True)
+        flow = async_increment_value.repeat(3)
 
-        with pytest.raises(LoopControlException) as exc_info:
-            await flow(1)
-        assert exc_info.value.context["iteration"] == 1
-        assert isinstance(exc_info.value.__cause__, TypeError)
-
-    @pytest.mark.asyncio
-    async def test_async_previous_result_rejects_non_call_args_as_success_result(self):
-        @node
-        async def async_increment_value(value: int) -> int:
-            return value + 1
-
-        flow = async_increment_value.repeat(2)
-
-        assert await flow(1) is None
+        assert await flow(0) == 3
 
     @pytest.mark.asyncio
     async def test_async_same_input_repeat_reuses_original_args_and_kwargs(self):

@@ -151,14 +151,10 @@ def _validate_repeat_input_mode(input_mode: Any) -> RepeatInputMode:
     return input_mode
 
 
-def _repeat_call_args(last_result: Any) -> CallArgs:
-    if not isinstance(last_result, CallArgs):
-        raise TypeError(
-            "repeat(input_mode=RepeatInputMode.PREVIOUS_RESULT) requires each "
-            "successful iteration to return call_args(...), got "
-            f"{type(last_result).__name__}"
-        )
-    return last_result
+def _repeat_next_call(last_result: Any) -> CallArgs:
+    if isinstance(last_result, CallArgs):
+        return last_result
+    return call_args(last_result)
 
 
 class Repeat:
@@ -200,7 +196,7 @@ class Repeat:
                         self.node, *next_call.args, **next_call.kwargs
                     )
                 if self.input_mode is RepeatInputMode.PREVIOUS_RESULT:
-                    next_call = _repeat_call_args(candidate_result)
+                    next_call = _repeat_next_call(candidate_result)
                 last_result = candidate_result
             except Exception as e:
                 if self.stop_on_error:
@@ -231,7 +227,7 @@ class Repeat:
                         self.node, *next_call.args, **next_call.kwargs
                     )
                 if self.input_mode is RepeatInputMode.PREVIOUS_RESULT:
-                    next_call = _repeat_call_args(candidate_result)
+                    next_call = _repeat_next_call(candidate_result)
                 last_result = candidate_result
             except Exception as e:
                 if self.stop_on_error:

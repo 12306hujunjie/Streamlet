@@ -49,12 +49,18 @@ target 在 `"async"` executor 下会直接运行在当前 event loop 中，不�
 `"thread"`，在包含异步节点时选择 `"async"`。
 
 `repeat` 默认使用 `RepeatInputMode.PREVIOUS_RESULT`：第 1 轮执行
-`node(*args, **kwargs)`，每轮成功返回值必须是 `call_args(...)`，用于指定下一轮
-的 `*args/**kwargs`。如果每轮都要使用最初传入的参数，使用
-`RepeatInputMode.SAME_INPUT`：
+`node(*args, **kwargs)`，之后把每轮成功返回值作为下一轮的单个位置参数。
+如果需要为下一轮指定多个位置参数或关键字参数，返回 `call_args(...)`。
+如果每轮都要使用最初传入的参数，使用 `RepeatInputMode.SAME_INPUT`：
 
 ```python
 from streamlet import CallArgs, RepeatInputMode, call_args, node
+
+@node
+def inc(value: int) -> int:
+    return value + 1
+
+assert inc.repeat(3)(0) == 3
 
 @node
 def step(value: int, factor: int = 1) -> CallArgs:

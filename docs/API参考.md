@@ -95,11 +95,17 @@ flow = source.fan_out_to([fetch_orders, fetch_profile])
 
 | 模式 | 行为 |
 |------|------|
-| `RepeatInputMode.PREVIOUS_RESULT` | 默认。第 1 轮执行 `node(*args, **kwargs)`；每轮成功返回值必须是 `call_args(...)`，作为下一轮的 `*args/**kwargs` |
+| `RepeatInputMode.PREVIOUS_RESULT` | 默认。第 1 轮执行 `node(*args, **kwargs)`；之后把每轮成功返回值作为下一轮的单个位置参数。返回 `call_args(...)` 时，使用其中显式声明的 `*args/**kwargs` |
 | `RepeatInputMode.SAME_INPUT` | 每一轮都执行 `node(*args, **kwargs)`，重复使用最初传入的参数 |
 
 ```python
 from streamlet import CallArgs, RepeatInputMode, call_args, node
+
+@node
+def inc(value: int) -> int:
+    return value + 1
+
+assert inc.repeat(3)(0) == 3
 
 @node
 def step(value: int, factor: int = 1) -> CallArgs:
@@ -115,9 +121,9 @@ flow = load.repeat(3, input_mode=RepeatInputMode.SAME_INPUT)
 result = flow("orders", limit=50)
 ```
 
-`call_args(*args, **kwargs)` 会创建显式的下一轮调用参数。`PREVIOUS_RESULT` 不会自动展开普通 `tuple` 或 `dict`；这些类型会被视为业务返回值，并在多轮 repeat 中触发错误。
+`call_args(*args, **kwargs)` 会创建显式的下一轮调用参数。`PREVIOUS_RESULT` 不会自动展开普通 `tuple` 或 `dict`；这些类型会被视为业务返回值，作为一个位置参数传入下一轮。
 
-`stop_on_error=False`（默认）时，单次迭代失败会记录 warning 并继续循环；下一次迭代仍按 `input_mode` 决定输入：`PREVIOUS_RESULT` 使用最近一次成功返回的 `call_args(...)`，`SAME_INPUT` 继续使用原始参数。若所有迭代都失败，返回 `None`。
+`stop_on_error=False`（默认）时，单次迭代失败会记录 warning 并继续循环；下一次迭代仍按 `input_mode` 决定输入：`PREVIOUS_RESULT` 使用最近一次成功返回值推导出的下一轮调用参数，`SAME_INPUT` 继续使用原始参数。若所有迭代都失败，返回 `None`。
 
 `stop_on_error=True` 时，任一迭代失败都会立即抛出 `LoopControlException`。
 

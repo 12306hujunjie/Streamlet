@@ -19,7 +19,7 @@
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `name` | `str \| None` | 函数名 | 节点标识 |
-| `retry_count` | `int` | `3` | 最大重试次数，需 `enable_retry=True` |
+| `retry_count` | `int` | `3` | 最大重试次数 |
 | `retry_delay` | `float` | `1.0` | 初始重试延迟（秒） |
 | `exception_types` | `tuple` | `(Exception,)` | 可重试异常类型 |
 | `backoff_factor` | `float` | `1.0` | 指数退避乘数，`delay * factor^attempt` |
@@ -27,6 +27,9 @@
 | `enable_retry` | `bool` | `False` | 是否启用重试 |
 
 支持两种调用方式：`@node`（无参数）和 `@node(name="n")`（带参数）。
+重试只在 `enable_retry=True` 时执行；但 `retry_count`、`retry_delay`、
+`exception_types`、`backoff_factor` 和 `max_delay` 会在装饰器入口统一校验，
+即使未启用重试也会对无效参数早失败。
 
 输入校验失败抛出 `ValidationInputException`，返回值校验失败抛出
 `ValidationOutputException`。返回值校验基于函数的返回类型注解，支持

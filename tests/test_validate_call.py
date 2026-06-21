@@ -1,21 +1,28 @@
-"""Tests for custom_validate_call validation wrapper."""
+"""Tests for @node validation wrapper."""
 
 import importlib.util
 import sys
 
 import pytest
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ValidationError
 
+import streamlet
 from streamlet import (
     ValidationInputException,
     ValidationOutputException,
-    custom_validate_call,
+    node,
 )
+
+
+class TestPublicApi:
+    def test_custom_validate_call_is_not_exported(self):
+        assert "custom_validate_call" not in streamlet.__all__
+        assert not hasattr(streamlet, "custom_validate_call")
 
 
 class TestInputValidation:
     def test_valid_input_passes(self):
-        @custom_validate_call()
+        @node()
         def double(x: int) -> int:
             return x * 2
 
@@ -23,7 +30,7 @@ class TestInputValidation:
         assert result == 10
 
     def test_invalid_input_type_raises(self):
-        @custom_validate_call()
+        @node()
         def double(x: int) -> int:
             return x * 2
 
@@ -31,7 +38,7 @@ class TestInputValidation:
             double("not_an_int")
 
     def test_input_validation_error_contains_node_name(self):
-        @custom_validate_call(node_name="test_node")
+        @node(name="test_node")
         def double(x: int) -> int:
             return x * 2
 
@@ -40,7 +47,7 @@ class TestInputValidation:
         assert exc_info.value.node_name == "test_node"
 
     def test_validation_input_exception_attributes(self):
-        @custom_validate_call(node_name="my_node")
+        @node(name="my_node")
         def process(x: int) -> int:
             return x
 
@@ -52,7 +59,7 @@ class TestInputValidation:
 
 class TestOutputValidation:
     def test_valid_output_passes(self):
-        @custom_validate_call()
+        @node()
         def double(x: int) -> int:
             return x * 2
 
@@ -60,7 +67,7 @@ class TestOutputValidation:
         assert result == 10
 
     def test_invalid_output_type_raises(self):
-        @custom_validate_call()
+        @node()
         def bad_return(x: int) -> str:
             return 42  # returns int, annotated as str
 
@@ -68,7 +75,7 @@ class TestOutputValidation:
             bad_return(5)
 
     def test_output_validation_error_contains_original(self):
-        @custom_validate_call(node_name="output_node")
+        @node(name="output_node")
         def bad_return(x: int) -> str:
             return 42
 
@@ -86,7 +93,7 @@ class TestPydanticModelValidation:
     def test_valid_pydantic_input(self):
         UserModel = self.UserModel
 
-        @custom_validate_call()
+        @node()
         def process_user(user: UserModel) -> dict:
             return {"name": user.name, "age": user.age}
 
@@ -96,7 +103,7 @@ class TestPydanticModelValidation:
     def test_dict_input_fails_validation(self):
         UserModel = self.UserModel
 
-        @custom_validate_call()
+        @node()
         def process_user(user: UserModel) -> dict:
             return {"name": user.name, "age": user.age}
 
@@ -106,7 +113,7 @@ class TestPydanticModelValidation:
     def test_pydantic_output_validation(self):
         UserModel = self.UserModel
 
-        @custom_validate_call()
+        @node()
         def create_user(name: str, age: int) -> UserModel:
             return UserModel(name=name, age=age)
 
@@ -116,7 +123,7 @@ class TestPydanticModelValidation:
     def test_pydantic_output_returns_validated_value(self):
         UserModel = self.UserModel
 
-        @custom_validate_call()
+        @node()
         def create_user(name: str, age: str) -> UserModel:
             return {"name": name, "age": age}
 
@@ -124,13 +131,13 @@ class TestPydanticModelValidation:
         assert isinstance(result, UserModel)
         assert result.age == 25
 
-    def test_pydantic_output_uses_model_config_when_call_config_is_passed(self):
+    def test_pydantic_output_uses_model_config(self):
         class LowercaseUserModel(BaseModel):
-            model_config = ConfigDict(str_to_lower=True)
+            model_config = {"str_to_lower": True}
 
             name: str
 
-        @custom_validate_call(config=ConfigDict(str_to_upper=True))
+        @node()
         def create_user(name: str) -> LowercaseUserModel:
             return {"name": name}
 
@@ -140,7 +147,7 @@ class TestPydanticModelValidation:
     def test_pydantic_output_validation_fails(self):
         UserModel = self.UserModel
 
-        @custom_validate_call()
+        @node()
         def create_user(name: str, age: int) -> UserModel:
             return 42  # int cannot be coerced to UserModel
 
@@ -151,7 +158,7 @@ class TestPydanticModelValidation:
         class Payload(BaseModel):
             x: int
 
-        @custom_validate_call()
+        @node()
         def create_payload() -> None:
             Payload(x="bad")
 
@@ -166,7 +173,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from streamlet import custom_validate_call
+from streamlet import node
 
 
 class User(BaseModel):
@@ -174,12 +181,12 @@ class User(BaseModel):
     age: int
 
 
-@custom_validate_call()
+@node()
 def create_user() -> User:
     return {"name": "Alice", "age": "30"}
 
 
-@custom_validate_call()
+@node()
 def create_invalid_user() -> User:
     return 42
 """,
@@ -210,7 +217,7 @@ def create_invalid_user() -> User:
 class TestAsyncValidation:
     @pytest.mark.asyncio
     async def test_async_valid_input_passes(self):
-        @custom_validate_call()
+        @node()
         async def double(x: int) -> int:
             return x * 2
 
@@ -219,7 +226,7 @@ class TestAsyncValidation:
 
     @pytest.mark.asyncio
     async def test_async_invalid_input_raises(self):
-        @custom_validate_call()
+        @node()
         async def double(x: int) -> int:
             return x * 2
 
@@ -228,7 +235,7 @@ class TestAsyncValidation:
 
     @pytest.mark.asyncio
     async def test_async_invalid_output_raises(self):
-        @custom_validate_call()
+        @node()
         async def bad_return(x: int) -> str:
             return 42
 
@@ -240,7 +247,7 @@ class TestAsyncValidation:
         class Payload(BaseModel):
             x: int
 
-        @custom_validate_call()
+        @node()
         async def create_payload() -> None:
             Payload(x="bad")
 

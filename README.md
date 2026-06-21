@@ -80,7 +80,7 @@ results = flow("orders", limit=50)
 `from __future__ import annotations` 下的延迟注解，并保留
 `Annotated[...]` 元数据，例如 `Field(gt=0)`；校验失败分别抛出
 `ValidationInputException` 或 `ValidationOutputException`。更多细节见
-[API 参考](docs/API参考.md#custom_validate_call) 和
+[API 参考](docs/API参考.md#node-装饰器) 和
 [Pydantic TypeAdapter](https://docs.pydantic.dev/latest/concepts/type_adapter/)。
 
 ## 示例

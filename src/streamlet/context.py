@@ -1,6 +1,6 @@
 """依赖注入与验证工具。
 
-BaseFlowContext + ContextVarProvider + custom_validate_call。
+BaseFlowContext + ContextVarProvider。
 """
 
 import functools
@@ -169,12 +169,12 @@ def _create_input_validator_func(
     return validate_input_only
 
 
-def custom_validate_call(
+def _custom_validate_call(
     validate_return: bool = True,
     config: ConfigDict | None = None,
     node_name: str | None = None,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
-    """自定义 validate_call 包装器，区分输入/输出验证异常。"""
+    """内部 validate_call 包装器，区分输入/输出验证异常。"""
 
     def decorator(func: Callable) -> Callable:
         sig = inspect.signature(func)

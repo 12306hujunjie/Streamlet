@@ -11,7 +11,7 @@ from dependency_injector.wiring import Provider as _DIProvider
 from dependency_injector.wiring import inject as _di_inject
 from pydantic import ConfigDict
 
-from .context import custom_validate_call
+from .context import _custom_validate_call
 from .graph import Conditional, FanIn, Parallel, Pipeline, Repeat
 from .retry import RetryConfig, get_func_name, retry_decorator
 from .types import RepeatInputMode
@@ -256,7 +256,7 @@ def node_decorator(
         is_original_async = inspect.iscoroutinefunction(f)
 
         decorators = [
-            custom_validate_call(
+            _custom_validate_call(
                 validate_return=True,
                 config=ConfigDict(arbitrary_types_allowed=True),
                 node_name=node_name,

@@ -211,6 +211,11 @@ ContextVarProvider(
 - `"strict"` — fan-out 隔离时拒绝嵌套可变值和非 `dict` 可变 context 值，不做
   递归深拷贝
 
+`strict` 的目标是提前暴露浅拷贝无法隔离的共享状态风险，而不是自动复制这些
+对象。直接作为 value 的 `list` / `dict` / `set` 会被拒绝，包含在 `tuple` /
+`frozenset` 等不可变容器里的可变值也会被拒绝，例如
+`{"items": ("header", [])}`。
+
 需要让嵌套可变状态在 fan-out 前失败时，可定义自定义 context 容器：
 
 ```python

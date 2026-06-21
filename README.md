@@ -200,7 +200,9 @@ class StrictFlowContext(BaseFlowContext):
 ```
 
 `copy_policy="strict"` 不会递归深拷贝 context；它会在 fan-out 隔离时检测并拒绝
-嵌套可变值，让共享状态风险尽早暴露。
+会被浅拷贝共享的可变值，让共享状态风险尽早暴露。直接的 `list` / `dict` /
+`set` 会被拒绝，藏在 `tuple` / `frozenset` 等不可变容器里的可变值也会被拒绝，
+例如 `{"items": ("header", [])}`。
 
 ### 重试机制
 

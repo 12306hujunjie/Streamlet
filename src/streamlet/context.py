@@ -138,6 +138,18 @@ def _build_type_adapter(annotation: Any, config: ConfigDict) -> TypeAdapter[Any]
         raise
 
 
+def _create_input_validator_func(
+    func: Callable[..., Any],
+    sig: inspect.Signature,
+) -> Callable[..., inspect.BoundArguments]:
+    @functools.wraps(func)
+    def validate_input_only(*args: Any, **kwargs: Any) -> inspect.BoundArguments:
+        return sig.bind(*args, **kwargs)
+
+    cast(Any, validate_input_only).__signature__ = sig
+    return validate_input_only
+
+
 def custom_validate_call(
     validate_return: bool = True,
     config: ConfigDict | None = None,
@@ -152,7 +164,7 @@ def custom_validate_call(
         input_validator = validate_call(
             validate_return=False,
             config=validation_config,
-        )(func)
+        )(_create_input_validator_func(func, sig))
 
         return_type_adapter = None
         if validate_return and sig.return_annotation != inspect.Signature.empty:
@@ -192,9 +204,10 @@ def custom_validate_call(
             @functools.wraps(func)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
-                    result = await input_validator(*args, **kwargs)
+                    bound_args = input_validator(*args, **kwargs)
                 except ValidationError as e:
                     raise create_input_exception(e) from e
+                result = await func(*bound_args.args, **bound_args.kwargs)
                 return validate_result(result)
 
             return async_wrapper
@@ -203,9 +216,10 @@ def custom_validate_call(
             @functools.wraps(func)
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
                 try:
-                    result = input_validator(*args, **kwargs)
+                    bound_args = input_validator(*args, **kwargs)
                 except ValidationError as e:
                     raise create_input_exception(e) from e
+                result = func(*bound_args.args, **bound_args.kwargs)
                 return validate_result(result)
 
             return sync_wrapper

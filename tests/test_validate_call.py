@@ -4,7 +4,7 @@ import importlib.util
 import sys
 
 import pytest
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from streamlet import (
     ValidationInputException,
@@ -147,6 +147,17 @@ class TestPydanticModelValidation:
         with pytest.raises(ValidationOutputException):
             create_user("Bob", 25)
 
+    def test_function_body_validation_error_is_not_wrapped_as_input_error(self):
+        class Payload(BaseModel):
+            x: int
+
+        @custom_validate_call()
+        def create_payload() -> None:
+            Payload(x="bad")
+
+        with pytest.raises(ValidationError):
+            create_payload()
+
     def test_postponed_return_annotation_validates_output_model(self, tmp_path):
         module_path = tmp_path / "future_annotations_module.py"
         module_path.write_text(
@@ -223,3 +234,15 @@ class TestAsyncValidation:
 
         with pytest.raises(ValidationOutputException):
             await bad_return(5)
+
+    @pytest.mark.asyncio
+    async def test_async_function_body_validation_error_is_not_wrapped(self):
+        class Payload(BaseModel):
+            x: int
+
+        @custom_validate_call()
+        async def create_payload() -> None:
+            Payload(x="bad")
+
+        with pytest.raises(ValidationError):
+            await create_payload()

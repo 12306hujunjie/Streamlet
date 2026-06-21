@@ -1,6 +1,7 @@
 """Tests for RetryConfig and @node retry integration."""
 
 import pytest
+from pydantic import BaseModel, ValidationError
 
 from streamlet import (
     NodeRetryExhaustedException,
@@ -166,6 +167,23 @@ class TestNodeWithRetry:
         assert exc_info.value.node_name == "flaky_node"
         assert exc_info.value.retry_count == 1
         assert isinstance(exc_info.value.last_exception, TempError)
+
+    def test_node_retries_function_body_pydantic_validation_error(self):
+        call_count = 0
+
+        class Payload(BaseModel):
+            x: int
+
+        @node(retry_count=1, retry_delay=0, enable_retry=True)
+        def build_payload() -> None:
+            nonlocal call_count
+            call_count += 1
+            Payload(x="bad")
+
+        with pytest.raises(NodeRetryExhaustedException) as exc_info:
+            build_payload()
+        assert call_count == 2
+        assert isinstance(exc_info.value.last_exception, ValidationError)
 
     def test_node_without_retry(self):
         @node(enable_retry=False)

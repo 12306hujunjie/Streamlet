@@ -117,3 +117,7 @@ class TestFanOutIn:
         result = source.fan_out_in([minus_one, plus_one], collect, executor="thread")()
 
         assert result == [4, 8]
+
+    def test_fan_out_in_rejects_non_node_targets_with_target_name(self):
+        with pytest.raises(TypeError, match=r"targets\[0\] must be a Node"):
+            source_data.fan_out_in([object()], aggregate_sum)

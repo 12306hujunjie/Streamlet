@@ -156,3 +156,43 @@ class TestNodeProperties:
 
         with pytest.raises(TypeError, match="not pickle-serializable"):
             pickle.dumps(my_func)
+
+
+class TestNodeFluentValidation:
+    """Node fluent API should reject invalid user arguments at the boundary."""
+
+    @pytest.fixture
+    def source(self):
+        @node
+        def source_node(value: int) -> int:
+            return value
+
+        return source_node
+
+    def test_then_rejects_non_node(self, source):
+        with pytest.raises(TypeError, match="other must be a Node"):
+            source.then(object())
+
+    def test_fan_in_rejects_non_node(self, source):
+        with pytest.raises(TypeError, match="aggregator must be a Node"):
+            source.fan_in(object())
+
+    def test_fan_out_to_rejects_non_string_executor(self, source):
+        with pytest.raises(TypeError, match="executor must be a string"):
+            source.fan_out_to([source], executor=object())
+
+    def test_fan_out_to_rejects_non_list_targets(self, source):
+        with pytest.raises(TypeError, match="nodes must be a list"):
+            source.fan_out_to(object())
+
+    def test_fan_out_to_rejects_non_node_targets(self, source):
+        with pytest.raises(TypeError, match=r"nodes\[0\] must be a Node"):
+            source.fan_out_to([object()])
+
+    def test_branch_on_rejects_non_dict_conditions(self, source):
+        with pytest.raises(TypeError, match="conditions must be a dict"):
+            source.branch_on(object())
+
+    def test_branch_on_rejects_non_node_branch(self, source):
+        with pytest.raises(TypeError, match=r"conditions\[1\] must be a Node"):
+            source.branch_on({1: object()})

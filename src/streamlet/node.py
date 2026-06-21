@@ -18,6 +18,28 @@ from .retry import RetryConfig, get_func_name, retry_decorator
 logger = __import__("logging").getLogger("streamlet")
 
 
+def _validate_node(value: Any, param_name: str) -> "Node":
+    if not isinstance(value, Node):
+        raise TypeError(f"{param_name} must be a Node, got {type(value).__name__}")
+    return value
+
+
+def _validate_node_list(values: Any, param_name: str) -> list["Node"]:
+    if not isinstance(values, list):
+        raise TypeError(f"{param_name} must be a list of Node instances")
+    for index, value in enumerate(values):
+        _validate_node(value, f"{param_name}[{index}]")
+    return values
+
+
+def _validate_node_mapping(values: Any, param_name: str) -> dict[Any, "Node"]:
+    if not isinstance(values, dict):
+        raise TypeError(f"{param_name} must be a dict mapping branch keys to Nodes")
+    for key, value in values.items():
+        _validate_node(value, f"{param_name}[{key!r}]")
+    return values
+
+
 class Node:
     """用户唯一接触的类型。_func 可以是原始函数或 Graph 内部类。"""
 
@@ -65,6 +87,7 @@ class Node:
     # === Fluent 接口 ===
 
     def then(self, other: "Node") -> "Node":
+        other = _validate_node(other, "other")
         pipeline = Pipeline(self, other)
         return Node(pipeline, name=f"{self.name}→{other.name}")
 
@@ -74,12 +97,15 @@ class Node:
         executor: str = "thread",
         max_workers: int | None = None,
     ) -> "Node":
+        if not isinstance(executor, str):
+            raise TypeError(f"executor must be a string, got {type(executor).__name__}")
         executor_lower = executor.lower()
         if executor_lower not in ("thread", "async", "auto"):
             raise ValueError(
                 f"Only 'thread', 'async', and 'auto' executors are "
                 f"supported, got '{executor}'"
             )
+        nodes = _validate_node_list(nodes, "nodes")
         if not nodes:
             raise ValueError("Target nodes list cannot be empty")
         parallel = Parallel(
@@ -95,10 +121,12 @@ class Node:
         return Node(parallel, name=f"{self.name}∥[...]", is_async=is_async)
 
     def fan_in(self, aggregator: "Node") -> "Node":
+        aggregator = _validate_node(aggregator, "aggregator")
         fan_in = FanIn(self, aggregator)
         return Node(fan_in, name=f"...⤇{aggregator.name}")
 
     def branch_on(self, conditions: dict[Any, "Node"]) -> "Node":
+        conditions = _validate_node_mapping(conditions, "conditions")
         cond = Conditional(self, conditions)
         return Node(cond, name=f"{self.name}?")
 
@@ -113,6 +141,7 @@ class Node:
         executor: str = "thread",
         max_workers: int | None = None,
     ) -> "Node":
+        targets = _validate_node_list(targets, "targets")
         return self.fan_out_to(targets, executor, max_workers).fan_in(aggregator)
 
     def __repr__(self) -> str:

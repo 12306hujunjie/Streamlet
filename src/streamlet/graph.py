@@ -60,7 +60,7 @@ class Parallel:
     executor_type 控制并行调度策略：
     - "thread": ThreadPoolExecutor 调度
     - "async":  asyncio.gather 调度
-    - "auto":   全 sync 走 thread，含 async 走 async
+    - "auto":   全 sync 走 thread，混合 sync/async 走 hybrid
     """
 
     def __init__(
@@ -85,7 +85,7 @@ class Parallel:
             return self._async_run(*args, **kwargs)
         else:  # "auto"
             if self._is_async:
-                return self._async_run(*args, **kwargs)
+                return self._async_hybrid_run(*args, **kwargs)
             else:
                 return self._sync_run(*args, **kwargs)
 
@@ -106,6 +106,11 @@ class Parallel:
         ex = AsyncExecutor(max_workers=self.max_workers)
         source_result = await ex.arun(self.source, *args, **kwargs)
         return await ex.agather(_parallel_tasks(source_result, self.targets))
+
+    async def _async_hybrid_run(self, *args: Any, **kwargs: Any) -> Any:
+        ex = AsyncExecutor(max_workers=self.max_workers)
+        source_result = await ex.arun(self.source, *args, **kwargs)
+        return await ex.ahybrid_gather(_parallel_tasks(source_result, self.targets))
 
 
 class Conditional:

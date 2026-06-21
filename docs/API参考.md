@@ -79,7 +79,8 @@ def positive_score() -> Annotated[int, Field(gt=0)]:
 - `"thread"` — 线程池（默认），更适合 I/O 密集或阻塞型任务
 - `"async"` — `asyncio.gather` 协程调度，只适合真实 `async` 且会主动
   `await` 的 target
-- `"auto"` — 全同步节点选择 `"thread"`，包含异步节点时选择 `"async"`
+- `"auto"` — 全同步节点选择 `"thread"`；包含异步节点时使用 hybrid 调度，
+  async target 留在 event loop，同步 target 放入线程池执行
 
 注意：`"async"` executor 不会把同步 target 自动放入线程池。同步 target 会在
 当前 event loop 内直接执行；CPU 计算或阻塞 I/O 不会获得协程并发，还会阻塞

@@ -169,6 +169,22 @@ class AsyncExecutor:
         node_inputs: list[ParallelTask],
         key_func: Callable[[Any], str] | None = None,
     ) -> dict[str, "ParallelResult"]:
+        return await self._agather(node_inputs, key_func, offload_sync=False)
+
+    async def ahybrid_gather(
+        self,
+        node_inputs: list[ParallelTask],
+        key_func: Callable[[Any], str] | None = None,
+    ) -> dict[str, "ParallelResult"]:
+        return await self._agather(node_inputs, key_func, offload_sync=True)
+
+    async def _agather(
+        self,
+        node_inputs: list[ParallelTask],
+        key_func: Callable[[Any], str] | None,
+        *,
+        offload_sync: bool,
+    ) -> dict[str, "ParallelResult"]:
         parent_ctx_snapshot = capture_context()
         if self.max_workers is not None and self.max_workers <= 0:
             raise ValueError("max_workers must be greater than 0")
@@ -184,9 +200,44 @@ class AsyncExecutor:
             # fan-out 分支隔离：为每个 asyncio task 注入独立的 context 快照
             apply_context(parent_ctx_snapshot)
             base = key_func(node) if key_func else node.name
+            if offload_sync and not node._is_async:
+                return await asyncio.to_thread(
+                    _execute_sync_one,
+                    node,
+                    args,
+                    kwargs,
+                    parent_ctx_snapshot,
+                    base,
+                )
             start = time.perf_counter()
             try:
                 result = await node._execute_async(*args, **kwargs)
+                return base, ParallelResult(
+                    node_name=node.name,
+                    success=True,
+                    result=result,
+                    execution_time=time.perf_counter() - start,
+                )
+            except Exception as e:
+                return base, ParallelResult(
+                    node_name=node.name,
+                    success=False,
+                    error=str(e),
+                    error_traceback=traceback.format_exc(),
+                    execution_time=time.perf_counter() - start,
+                )
+
+        def _execute_sync_one(
+            node: Any,
+            args: tuple[Any, ...],
+            kwargs: dict[str, Any],
+            snapshot: dict[int, Any],
+            base: str,
+        ) -> tuple[str, ParallelResult]:
+            apply_context(snapshot)
+            start = time.perf_counter()
+            try:
+                result = node._execute(*args, **kwargs)
                 return base, ParallelResult(
                     node_name=node.name,
                     success=True,

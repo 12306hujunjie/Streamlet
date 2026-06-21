@@ -46,7 +46,8 @@ result = double.then(add_ten)(5)  # 20
 `asyncio.gather`，只适合真实 `async` 且会主动 `await` 的 target。同步
 target 在 `"async"` executor 下会直接运行在当前 event loop 中，不会自动放入
 线程池，CPU 或阻塞 I/O 会阻塞 event loop。`"auto"` 会在全同步节点时选择
-`"thread"`，在包含异步节点时选择 `"async"`。
+`"thread"`；在包含异步节点时使用 hybrid 调度：async target 留在 event loop，
+同步 target 放入线程池执行。
 
 `repeat` 默认使用 `RepeatInputMode.PREVIOUS_RESULT`：第 1 轮执行
 `node(*args, **kwargs)`，之后把每轮成功返回值作为下一轮的单个位置参数。

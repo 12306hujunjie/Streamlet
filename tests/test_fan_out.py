@@ -127,6 +127,55 @@ class TestFanOutExecutorTypes:
         assert results["sync_fetch"].result == ("u-3", 3)
         assert results["async_fetch"].result == ("u-3", 4)
 
+    @pytest.mark.asyncio
+    async def test_auto_mixed_targets_offloads_blocking_sync_target(self):
+        blocking_started = threading.Event()
+        release_blocking = threading.Event()
+        async_started = threading.Event()
+        observed = {
+            "blocking_started": False,
+            "async_started_before_release": False,
+        }
+
+        def observe_target_overlap() -> None:
+            observed["blocking_started"] = blocking_started.wait(timeout=2)
+            if observed["blocking_started"]:
+                observed["async_started_before_release"] = async_started.wait(timeout=1)
+            release_blocking.set()
+
+        @node
+        def source(value: int) -> int:
+            return value
+
+        @node
+        def blocking_target(value: int) -> int:
+            blocking_started.set()
+            release_blocking.wait(timeout=2)
+            return value + 1
+
+        @node
+        async def async_target(value: int) -> int:
+            async_started.set()
+            return value + 2
+
+        flow = source.fan_out_to(
+            [blocking_target, async_target],
+            executor="auto",
+        )
+
+        observer = threading.Thread(target=observe_target_overlap)
+        observer.start()
+        try:
+            results = await asyncio.wait_for(flow(10), timeout=2)
+        finally:
+            release_blocking.set()
+            observer.join(timeout=2)
+
+        assert observed["blocking_started"] is True
+        assert observed["async_started_before_release"] is True
+        assert results["blocking_target"].result == 11
+        assert results["async_target"].result == 12
+
     def test_invalid_executor_raises(self):
         with pytest.raises(ValueError, match="Only 'thread', 'async', and 'auto'"):
             source_data.fan_out_to([multiply], executor="process")

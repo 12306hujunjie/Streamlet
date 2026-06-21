@@ -1,6 +1,6 @@
 [project]
 name = "streamlet-py"
-version = "0.0.5"
+version = "1.0.0b1"
 description = "A powerful Python framework for building declarative, concurrent data processing workflows"
 authors = [
     {name = "12306hujunjie", email = "545512690@qq.com"},
@@ -11,7 +11,7 @@ readme = "README.md"
 license = {file = "LICENSE"}
 keywords = ["workflow", "data-processing", "concurrent", "declarative", "pipeline"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

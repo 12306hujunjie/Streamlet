@@ -4,8 +4,9 @@ import asyncio
 import threading
 
 import pytest
+from dependency_injector.wiring import Provide
 
-from streamlet import FanOutArgs, ParallelResult, fan_out_args, node
+from streamlet import BaseFlowContext, FanOutArgs, ParallelResult, fan_out_args, node
 from tests.conftest import add_five, multiply, source_data
 
 
@@ -175,6 +176,72 @@ class TestFanOutExecutorTypes:
         assert observed["async_started_before_release"] is True
         assert results["blocking_target"].result == 11
         assert results["async_target"].result == 12
+
+    @pytest.mark.asyncio
+    async def test_auto_mixed_targets_wraps_sync_target_failure(self):
+        @node
+        def source(value: int) -> int:
+            return value
+
+        @node
+        def failing_sync_target(value: int) -> int:
+            raise ValueError(f"sync target failed: {value}")
+
+        @node
+        async def async_target(value: int) -> int:
+            return value + 1
+
+        flow = source.fan_out_to(
+            [failing_sync_target, async_target],
+            executor="auto",
+        )
+
+        results = await flow(10)
+
+        failed = results["failing_sync_target"]
+        assert failed.success is False
+        assert failed.error == "sync target failed: 10"
+        assert failed.error_traceback is not None
+        assert results["async_target"].success is True
+        assert results["async_target"].result == 11
+
+    @pytest.mark.asyncio
+    async def test_auto_mixed_targets_isolates_context_between_branches(self):
+        container = BaseFlowContext()
+
+        @node
+        def source(value: int) -> int:
+            return value
+
+        @node
+        def sync_target(
+            value: int,
+            state: dict = Provide[BaseFlowContext.context],
+        ) -> str:
+            assert state["shared"] == "parent"
+            state["branch"] = "sync"
+            return state["branch"]
+
+        @node
+        async def async_target(
+            value: int,
+            state: dict = Provide[BaseFlowContext.context],
+        ) -> str:
+            assert state["shared"] == "parent"
+            state["branch"] = "async"
+            await asyncio.sleep(0.01)
+            return state["branch"]
+
+        container.wire(modules=[__name__])
+        container.context()["shared"] = "parent"
+
+        flow = source.fan_out_to([sync_target, async_target], executor="auto")
+
+        results = await flow(10)
+
+        assert results["sync_target"].result == "sync"
+        assert results["async_target"].result == "async"
+        assert "branch" not in container.context()
 
     def test_invalid_executor_raises(self):
         with pytest.raises(ValueError, match="Only 'thread', 'async', and 'auto'"):

@@ -95,14 +95,14 @@ class SyncExecutor:
     def _run_with_time(
         self, node: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
     ) -> Any:
-        start = time.time()
+        start = time.perf_counter()
         try:
             result = node._execute(*args, **kwargs)
             return ParallelResult(
                 node_name=node.name,
                 success=True,
                 result=result,
-                execution_time=time.time() - start,
+                execution_time=time.perf_counter() - start,
             )
         except Exception as e:
             return ParallelResult(
@@ -110,7 +110,7 @@ class SyncExecutor:
                 success=False,
                 error=str(e),
                 error_traceback=traceback.format_exc(),
-                execution_time=time.time() - start,
+                execution_time=time.perf_counter() - start,
             )
 
     def _run_isolated(
@@ -184,14 +184,14 @@ class AsyncExecutor:
             # fan-out 分支隔离：为每个 asyncio task 注入独立的 context 快照
             apply_context(parent_ctx_snapshot)
             base = key_func(node) if key_func else node.name
-            start = time.time()
+            start = time.perf_counter()
             try:
                 result = await node._execute_async(*args, **kwargs)
                 return base, ParallelResult(
                     node_name=node.name,
                     success=True,
                     result=result,
-                    execution_time=time.time() - start,
+                    execution_time=time.perf_counter() - start,
                 )
             except Exception as e:
                 return base, ParallelResult(
@@ -199,7 +199,7 @@ class AsyncExecutor:
                     success=False,
                     error=str(e),
                     error_traceback=traceback.format_exc(),
-                    execution_time=time.time() - start,
+                    execution_time=time.perf_counter() - start,
                 )
 
         async def _execute_limited(

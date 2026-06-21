@@ -6,6 +6,7 @@ import time
 
 import pytest
 
+import streamlet.executor as executor_module
 from streamlet import BaseFlowContext
 from streamlet.context import ContextVarProvider
 from streamlet.executor import AsyncExecutor, SyncExecutor
@@ -130,6 +131,23 @@ class TestSyncExecutorGather:
         assert "boom" in results["failer"].error
         assert results["failer"].error_traceback is not None
 
+    def test_execution_time_uses_monotonic_clock(self, monkeypatch):
+        node = StubNode("timed", lambda x: x)
+        ex = SyncExecutor()
+
+        wall_clock_values = iter([100.0, 90.0])
+        monotonic_values = iter([10.0, 12.5])
+        monkeypatch.setattr(
+            executor_module.time, "time", lambda: next(wall_clock_values)
+        )
+        monkeypatch.setattr(
+            executor_module.time, "perf_counter", lambda: next(monotonic_values)
+        )
+
+        results = ex.gather([(node, 1)])
+
+        assert results["timed"].execution_time == 2.5
+
 
 # ============================================================
 # AsyncExecutor 测试
@@ -241,6 +259,24 @@ class TestAsyncExecutorAGather:
         assert not results["failer"].success
         assert "async boom" in results["failer"].error
         assert results["failer"].error_traceback is not None
+
+    @pytest.mark.asyncio
+    async def test_execution_time_uses_monotonic_clock(self, monkeypatch):
+        node = StubNode("timed", lambda x: x)
+        ex = AsyncExecutor()
+
+        wall_clock_values = iter([100.0, 90.0])
+        monotonic_values = iter([10.0, 12.5])
+        monkeypatch.setattr(
+            executor_module.time, "time", lambda: next(wall_clock_values)
+        )
+        monkeypatch.setattr(
+            executor_module.time, "perf_counter", lambda: next(monotonic_values)
+        )
+
+        results = await ex.agather([(node, 1)])
+
+        assert results["timed"].execution_time == 2.5
 
 
 # ============================================================

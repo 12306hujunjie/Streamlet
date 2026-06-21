@@ -70,6 +70,9 @@ def positive_score() -> Annotated[int, Field(gt=0)]:
 ### `fan_out_to(nodes: list[Node], executor: str = "thread", max_workers: int = None) -> Node`
 
 并行扇出。source 执行后，每个 target 并行执行。返回 `dict[str, ParallelResult]`。
+如果后面继续调用 `.then(next_node)`，`next_node` 接收的也是这个原始结果字典，
+不是成功结果列表或自动解包后的业务值。fan-out 后继续业务链时，应先调用
+`.fan_in(aggregator)` 显式聚合，或使用 `.fan_out_in(...)`。
 
 默认情况下，每个 target 接收相同的 source 输出作为单个位置参数。若 source 返回
 `fan_out_args(...)`，则每个参数字典按顺序对应一个 target，并作为该 target 的
@@ -108,6 +111,9 @@ flow = source.fan_out_to([fetch_orders, fetch_profile])
 ### `fan_in(aggregator: Node) -> Node`
 
 聚合并行结果。aggregator 接收 `dict[str, ParallelResult]` 参数。
+
+`fan_in` 是 fan-out 后回到普通业务链的显式入口：aggregator 负责检查
+`ParallelResult.success`、处理失败分支，并返回下游 `.then(...)` 真正需要的业务值。
 
 ### `fan_out_in(targets: list[Node], aggregator: Node, executor: str = "thread", max_workers: int = None) -> Node`
 

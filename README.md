@@ -49,6 +49,10 @@ target 在 `"async"` executor 下会直接运行在当前 event loop 中，不�
 `"thread"`；在包含异步节点时使用 hybrid 调度：async target 留在 event loop，
 同步 target 放入线程池执行。
 
+`fan_out_to(...).then(...)` 不会把成功结果列表传给下游；`.then()` 接收到的是
+原始的 `dict[str, ParallelResult]`。fan-out 后如果要继续处理业务结果，应先用
+`.fan_in(aggregator)` 显式聚合，或直接使用 `.fan_out_in(...)`。
+
 `repeat` 默认使用 `RepeatInputMode.PREVIOUS_RESULT`：第 1 轮执行
 `node(*args, **kwargs)`，之后把每轮成功返回值作为下一轮的单个位置参数。
 如果需要为下一轮指定多个位置参数或关键字参数，返回 `call_args(...)`。
@@ -142,6 +146,10 @@ workflow = source.fan_out_to([multiply, add_ten], executor="thread").fan_in(aggr
 result = workflow(5)
 print(result)  # {"total": 25, "results": [10, 15]}
 ```
+
+注意：`fan_out_to([multiply, add_ten]).then(next_node)` 会把
+`dict[str, ParallelResult]` 原样传给 `next_node`，不会自动提取成功结果。
+继续业务链时通常应写成 `fan_out_to(...).fan_in(aggregate).then(next_node)`。
 
 source 返回普通值时，所有 target 接收同一个单参数；需要为不同 target
 传递不同 kwargs 时，返回显式的 `fan_out_args`：

@@ -65,6 +65,44 @@ class TestFanOutExecutorTypes:
         results = flow(10)
         assert sorted(r.result for r in results.values()) == [15, 20]
 
+    @pytest.mark.parametrize(
+        "executor, async_source", [("async", False), ("auto", True)]
+    )
+    @pytest.mark.asyncio
+    async def test_async_path_max_workers_limits_concurrency(
+        self, executor: str, async_source: bool
+    ):
+        running = 0
+        peak_running = 0
+
+        def sync_source_node(value: int) -> int:
+            return value
+
+        async def async_source_node(value: int) -> int:
+            return value
+
+        async def run_target(value: int) -> int:
+            nonlocal running, peak_running
+            running += 1
+            peak_running = max(peak_running, running)
+            await asyncio.sleep(0.01)
+            running -= 1
+            return value
+
+        targets = [node(run_target, name=f"target_{index}") for index in range(5)]
+        source = (
+            node(async_source_node, name="source")
+            if async_source
+            else node(sync_source_node, name="source")
+        )
+        flow = source.fan_out_to(targets, executor=executor, max_workers=2)
+
+        results = await flow(10)
+
+        assert len(results) == 5
+        assert all(result.result == 10 for result in results.values())
+        assert peak_running == 2
+
     @pytest.mark.asyncio
     async def test_auto_executor_with_fan_out_args_and_mixed_targets(self):
         @node

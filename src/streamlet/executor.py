@@ -158,6 +158,9 @@ class SyncExecutor:
 class AsyncExecutor:
     """异步执行器：gather 使用 asyncio.gather 实现真正的异步并发。"""
 
+    def __init__(self, max_workers: int | None = None) -> None:
+        self.max_workers = max_workers
+
     async def arun(self, node: Any, *args: Any, **kwargs: Any) -> Any:
         return await node._execute_async(*args, **kwargs)
 
@@ -167,6 +170,13 @@ class AsyncExecutor:
         key_func: Callable[[Any], str] | None = None,
     ) -> dict[str, "ParallelResult"]:
         parent_ctx_snapshot = capture_context()
+        if self.max_workers is not None and self.max_workers <= 0:
+            raise ValueError("max_workers must be greater than 0")
+        semaphore = (
+            asyncio.Semaphore(self.max_workers)
+            if self.max_workers is not None
+            else None
+        )
 
         async def _execute_one(
             node: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
@@ -192,8 +202,16 @@ class AsyncExecutor:
                     execution_time=time.time() - start,
                 )
 
+        async def _execute_limited(
+            node: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
+        ) -> tuple[str, ParallelResult]:
+            if semaphore is None:
+                return await _execute_one(node, args, kwargs)
+            async with semaphore:
+                return await _execute_one(node, args, kwargs)
+
         results_list = await asyncio.gather(
-            *(_execute_one(*_split_task(task)) for task in node_inputs)
+            *(_execute_limited(*_split_task(task)) for task in node_inputs)
         )
         # asyncio.gather 并发返回，存在同名键可能 → _unique_key 去重
         results: dict[str, ParallelResult] = {}

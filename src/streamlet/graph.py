@@ -102,7 +102,7 @@ class Parallel:
         )
 
     async def _async_run(self, *args: Any, **kwargs: Any) -> Any:
-        ex = AsyncExecutor()
+        ex = AsyncExecutor(max_workers=self.max_workers)
         source_result = await ex.arun(self.source, *args, **kwargs)
         return await ex.agather(_parallel_tasks(source_result, self.targets))
 

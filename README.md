@@ -1,6 +1,9 @@
 # Streamlet - 智能流式数据处理框架
 
-[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Tests](https://github.com/12306hujunjie/Streamlet/actions/workflows/test.yml/badge.svg)](https://github.com/12306hujunjie/Streamlet/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/12306hujunjie/Streamlet/branch/main/graph/badge.svg)](https://codecov.io/gh/12306hujunjie/Streamlet)
+[![PyPI](https://img.shields.io/pypi/v/streamlet-py.svg)](https://pypi.org/project/streamlet-py/)
+[![Python](https://img.shields.io/pypi/pyversions/streamlet-py.svg)](https://pypi.org/project/streamlet-py/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 **声明式数据流处理框架：用方法链表达业务逻辑，框架自动处理异步/同步混合执行、并行调度和重试。**

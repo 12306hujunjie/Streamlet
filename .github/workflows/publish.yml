@@ -15,9 +15,19 @@ on:
           - pypi
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+      actions: read
+      id-token: write
+
   publish:
     runs-on: ubuntu-latest
     environment: release
+    needs: test
     permissions:
       id-token: write
       contents: read
@@ -34,16 +44,6 @@ jobs:
 
       - name: Install dependencies
         run: pdm install -G dev
-
-      - name: Run tests
-        run: pdm run pytest
-
-      - name: Run quality gates
-        run: |
-          pdm run ruff check src/ tests/
-          pdm run ruff format --check src/ tests/
-          pdm run mypy src/streamlet/
-          pdm run bandit -r src/
 
       - name: Build package
         run: pdm build

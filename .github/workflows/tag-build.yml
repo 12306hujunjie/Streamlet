@@ -6,10 +6,21 @@ on:
       - 'v*.*.*'
 
 jobs:
-  test-build-publish:
+  test:
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+      actions: read
+      id-token: write
+
+  build-publish:
     runs-on: ubuntu-latest
     environment: release
+    needs: test
     permissions:
+      actions: write
       contents: read
 
     steps:
@@ -58,17 +69,6 @@ jobs:
             echo "Tag version ${TAG_VERSION} does not match pyproject.toml version ${PROJECT_VERSION}."
             exit 1
           fi
-
-      - name: Run quality gates
-        run: |
-          pdm run ruff check src/ tests/
-          pdm run ruff format --check src/ tests/
-          pdm run mypy src/streamlet/
-          pdm run bandit -r src/
-
-      - name: Run tests
-        run: |
-          pdm run pytest
 
       - name: Build package
         run: |

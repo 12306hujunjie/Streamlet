@@ -1,53 +1,46 @@
-name: Unit Tests
+name: Tests
 
-# 触发条件：推送到main分支或创建拉取请求时自动运行
 on:
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
-
-# 允许手动触发工作流
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   test:
-    name: Run Unit Tests
+    name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
 
-    # 权限配置：允许发布测试结果和检查状态
     permissions:
       contents: read
       checks: write
       pull-requests: write
       actions: read
+      id-token: write
 
-    # 支持多个Python版本的矩阵测试
     strategy:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
       fail-fast: false
 
     steps:
-    # 1. 检出代码
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # 2. 设置Python环境
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
 
-    # 3. 安装PDM
     - name: Install PDM
       run: |
         python -m pip install --upgrade pip
         pip install pdm
 
-    # 4. 配置PDM缓存
     - name: Cache PDM dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cache/pdm
@@ -56,12 +49,10 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pdm-${{ matrix.python-version }}-
 
-    # 5. 安装项目依赖
     - name: Install dependencies
       run: |
         pdm install -G dev
 
-    # 6. 质量门禁
     - name: Run quality gates
       run: |
         pdm run ruff check src/ tests/
@@ -69,7 +60,6 @@ jobs:
         pdm run mypy src/streamlet/
         pdm run bandit -r src/
 
-    # 7. 执行单元测试并生成覆盖率报告
     - name: Run tests with pytest
       run: |
         mkdir -p reports
@@ -83,7 +73,6 @@ jobs:
           --self-contained-html \
           --junitxml=reports/junit.xml
 
-    # 8. 上传测试报告
     - name: Upload test reports
       uses: actions/upload-artifact@v4
       if: always()
@@ -95,17 +84,16 @@ jobs:
           coverage.xml
         retention-days: 30
 
-    # 9. 上传覆盖率到Codecov（可选）
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       if: matrix.python-version == '3.10'
       with:
-        file: ./coverage.xml
+        files: ./coverage.xml
         flags: unittests
         name: codecov-umbrella
+        use_oidc: true
         fail_ci_if_error: false
 
-    # 10. 发布测试结果
     - name: Publish test results
       uses: EnricoMi/publish-unit-test-result-action@v2
       if: always()
@@ -114,7 +102,6 @@ jobs:
         check_name: "Unit Test Results (Python ${{ matrix.python-version }})"
         comment_mode: always
 
-  # 汇总作业：确保所有测试都通过
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
@@ -135,10 +122,8 @@ jobs:
       run: |
         echo "## 🧪 Test Summary" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "| Python Version | Status |" >> $GITHUB_STEP_SUMMARY
-        echo "|----------------|--------|" >> $GITHUB_STEP_SUMMARY
-        echo "| 3.10 | ${{ needs.test.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| 3.11 | ${{ needs.test.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| 3.12 | ${{ needs.test.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Matrix | Python Versions | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|--------|-----------------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| Tests | 3.10, 3.11, 3.12, 3.13, 3.14 | ${{ needs.test.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "📊 Test reports and coverage data are available in the artifacts." >> $GITHUB_STEP_SUMMARY

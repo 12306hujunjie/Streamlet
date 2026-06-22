@@ -91,8 +91,10 @@ jobs:
         files: ./coverage.xml
         flags: unittests
         name: codecov-umbrella
+        slug: 12306hujunjie/Streamlet
         use_oidc: true
-        fail_ci_if_error: false
+        verbose: true
+        fail_ci_if_error: true
 
     - name: Publish test results
       uses: EnricoMi/publish-unit-test-result-action@v2

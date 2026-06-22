@@ -30,7 +30,7 @@ jobs:
     needs: test
     permissions:
       id-token: write
-      contents: read
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -58,6 +58,6 @@ jobs:
 
       - name: Upload artifacts to Release
         if: github.event_name == 'release'
-        run: gh release upload ${{ github.event.release.tag_name }} dist/*
+        run: gh release upload ${{ github.event.release.tag_name }} dist/* --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

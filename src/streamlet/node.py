@@ -9,9 +9,11 @@ from typing import Annotated, Any, get_args, get_origin, overload
 from dependency_injector.wiring import Provide as _DIProvide
 from dependency_injector.wiring import Provider as _DIProvider
 from dependency_injector.wiring import inject as _di_inject
+from func_timeout import FunctionTimedOut, func_timeout  # type: ignore[import-untyped]
 from pydantic import ConfigDict
 
-from .context import _custom_validate_call
+from .context import _custom_validate_call, apply_context, capture_context
+from .exceptions import NodeTimeoutException
 from .graph import Conditional, FanIn, Parallel, Pipeline, Repeat
 from .retry import RetryConfig, get_func_name, retry_decorator
 from .types import RepeatInputMode
@@ -51,6 +53,58 @@ def _validate_max_workers(value: Any) -> int | None:
     if value <= 0:
         raise ValueError("max_workers must be greater than 0")
     return value
+
+
+def _validate_timeout(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError(f"timeout must be a number or None, got {type(value).__name__}")
+    if value <= 0:
+        raise ValueError("timeout must be greater than 0")
+    return float(value)
+
+
+def _timeout_decorator(
+    timeout: float,
+    node_name: str,
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+        if inspect.iscoroutinefunction(func):
+
+            @functools.wraps(func)
+            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                try:
+                    return await asyncio.wait_for(func(*args, **kwargs), timeout)
+                except asyncio.TimeoutError as exc:
+                    raise NodeTimeoutException(
+                        message=f"节点 {node_name} 执行超时",
+                        node_name=node_name,
+                        timeout_seconds=timeout,
+                    ) from exc
+
+            return async_wrapper
+
+        @functools.wraps(func)
+        def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+            context_snapshot = capture_context()
+
+            def run_with_context() -> Any:
+                apply_context(context_snapshot)
+                return func(*args, **kwargs)
+
+            try:
+                return func_timeout(timeout, run_with_context)
+            except FunctionTimedOut as exc:
+                raise NodeTimeoutException(
+                    message=f"节点 {node_name} 执行超时",
+                    node_name=node_name,
+                    timeout_seconds=timeout,
+                ) from exc
+
+        return sync_wrapper
+
+    return decorator
 
 
 def _reject_sync_awaitable(result: Any, node_name: str) -> None:
@@ -226,6 +280,7 @@ def node_decorator(
     *,
     retry_count: int = 3,
     name: str | None = None,
+    timeout: float | None = None,
     retry_delay: float = 1.0,
     exception_types: tuple = (Exception,),
     backoff_factor: float = 1.0,
@@ -239,6 +294,7 @@ def node_decorator(
     *,
     retry_count: int = 3,
     name: str | None = None,
+    timeout: float | None = None,
     retry_delay: float = 1.0,
     exception_types: tuple = (Exception,),
     backoff_factor: float = 1.0,
@@ -249,6 +305,7 @@ def node_decorator(
     config = RetryConfig(
         retry_count, retry_delay, exception_types, backoff_factor, max_delay
     )
+    timeout = _validate_timeout(timeout)
 
     @functools.wraps(Node)
     def decorator(f: Callable) -> Node:
@@ -266,6 +323,8 @@ def node_decorator(
             decorators.append(retry_decorator(config=config, node_name=node_name))
         if _has_di_marker(f):
             decorators.append(_di_inject)
+        if timeout is not None:
+            decorators.append(_timeout_decorator(timeout, node_name))
 
         decorated_func = functools.reduce(lambda func, deco: deco(func), decorators, f)
         node_obj = Node(func=decorated_func, name=node_name, is_async=is_original_async)

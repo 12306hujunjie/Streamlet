@@ -1,14 +1,16 @@
 """Tests for @node decorator with various parameter combinations."""
 
+import asyncio
 import inspect
 import pickle
+import time
 import warnings
 from typing import Annotated
 
 import pytest
 from dependency_injector.wiring import Provide
 
-from streamlet import BaseFlowContext, Node, node
+from streamlet import BaseFlowContext, Node, NodeTimeoutException, node
 
 
 async def _resolve_value(value: int) -> int:
@@ -106,6 +108,81 @@ class TestNodeDecoratorAsync:
             func()
 
         assert attempts == 1
+
+
+class TestNodeDecoratorTimeout:
+    def test_sync_node_timeout_raises_and_stops_execution(self):
+        events: list[str] = []
+
+        @node(name="slow_sync", timeout=0.01)
+        def slow_sync() -> str:
+            events.append("started")
+            time.sleep(0.05)
+            events.append("finished")
+            return "done"
+
+        with pytest.raises(NodeTimeoutException) as exc_info:
+            slow_sync()
+
+        time.sleep(0.06)
+        assert exc_info.value.node_name == "slow_sync"
+        assert exc_info.value.timeout_seconds == 0.01
+        assert events == ["started"]
+
+    def test_sync_node_timeout_preserves_dependency_injection_context(self):
+        container = BaseFlowContext()
+        container.context()["key"] = "value"
+
+        @node(name="sync_timeout_di", timeout=1)
+        def sync_timeout_di(
+            state: dict = Provide[BaseFlowContext.context],
+        ) -> str:
+            return state["key"]
+
+        container.wire(modules=[__name__])
+
+        assert sync_timeout_di() == "value"
+
+    @pytest.mark.asyncio
+    async def test_async_node_timeout_raises(self):
+        @node(name="slow_async", timeout=0.01)
+        async def slow_async() -> str:
+            await asyncio.sleep(0.05)
+            return "done"
+
+        with pytest.raises(NodeTimeoutException) as exc_info:
+            await slow_async()
+
+        assert exc_info.value.node_name == "slow_async"
+        assert exc_info.value.timeout_seconds == 0.01
+
+    def test_invalid_timeout_raises(self):
+        with pytest.raises(ValueError, match="timeout"):
+            node(timeout=0)
+
+    @pytest.mark.asyncio
+    async def test_timeout_is_total_budget_for_retrying_node(self):
+        call_count = 0
+
+        class TempError(Exception):
+            retryable = True
+
+        @node(
+            timeout=0.03,
+            retry_count=3,
+            retry_delay=0.02,
+            exception_types=(TempError,),
+            enable_retry=True,
+        )
+        async def flaky_node() -> None:
+            nonlocal call_count
+            call_count += 1
+            raise TempError("retry")
+
+        with pytest.raises(NodeTimeoutException):
+            await flaky_node()
+
+        assert call_count == 2
 
 
 class TestNodeDecoratorWithDI:

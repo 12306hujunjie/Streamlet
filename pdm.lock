@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:6f68a2c0b0f2764e35653bb3ba0f3eb15ce38f148a183a126521b496da22864c"
+content_hash = "sha256:39a6ddb1cae5934d783481f84a95ddbc24ee6e004f97c2d9ca090c6009254dbe"
 
 [[metadata.targets]]
 requires_python = ">=3.10"
@@ -409,6 +409,15 @@ groups = ["dev"]
 files = [
     {file = "filelock-3.29.0-py3-none-any.whl", hash = "sha256:96f5f6344709aa1572bbf631c640e4ebeeb519e08da902c39a001882f30ac258"},
     {file = "filelock-3.29.0.tar.gz", hash = "sha256:69974355e960702e789734cb4871f884ea6fe50bd8404051a3530bc07809cf90"},
+]
+
+[[package]]
+name = "func-timeout"
+version = "4.3.5"
+summary = "Python module which allows you to specify timeouts when calling any existing function. Also provides support for stoppable-threads"
+groups = ["default"]
+files = [
+    {file = "func_timeout-4.3.5.tar.gz", hash = "sha256:74cd3c428ec94f4edfba81f9b2f14904846d5ffccc27c92433b8b5939b5575dd"},
 ]
 
 [[package]]

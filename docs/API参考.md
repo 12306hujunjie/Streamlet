@@ -5,6 +5,7 @@
 ```python
 @node(
     name: str | None = None,
+    timeout: float | None = None,
     retry_count: int = 3,
     retry_delay: float = 1.0,
     exception_types: tuple = (Exception,),
@@ -19,6 +20,7 @@
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `name` | `str \| None` | 函数名 | 节点标识 |
+| `timeout` | `float \| None` | `None` | 单次节点调用超时时间（秒） |
 | `retry_count` | `int` | `3` | 最大重试次数 |
 | `retry_delay` | `float` | `1.0` | 初始重试延迟（秒） |
 | `exception_types` | `tuple` | `(Exception,)` | 可重试异常类型 |
@@ -27,6 +29,20 @@
 | `enable_retry` | `bool` | `False` | 是否启用重试 |
 
 支持两种调用方式：`@node`（无参数）和 `@node(name="n")`（带参数）。
+`timeout` 必须为正数；节点调用超过该时间会抛出 `NodeTimeoutException`，
+异常包含 `node_name` 和 `timeout_seconds`。同步函数通过 `func-timeout` 执行，
+异步函数通过 `asyncio.wait_for` 执行。启用重试时，`timeout` 是整次节点调用的
+总预算，包含全部重试尝试和重试间隔。同步超时是 Python 级中断，不是进程级
+强杀；如果用户函数长时间停在不可中断的 C 扩展、系统调用，或主动吞掉超时异常，
+底层执行可能无法立即停止。
+
+同步 `timeout` 会在 `func-timeout` 的工作线程中执行节点调用。Streamlet 会把
+自身 `ContextVarProvider` 的当前快照传播到该工作线程；若调用本身已经位于
+fan-out 线程池或其他用户线程中，传播的是该调用线程当时的快照。`dict` 类型的
+context 值只浅拷贝顶层字典，非 `dict` 对象按原引用传播。对象是否可跨线程使用
+由用户保证；线程绑定资源（例如部分 DB session、request scoped 对象、依赖当前
+event loop 的 client）不应直接放入同步 timeout 节点的 context。
+
 重试只在 `enable_retry=True` 时执行；但 `retry_count`、`retry_delay`、
 `exception_types`、`backoff_factor` 和 `max_delay` 会在装饰器入口统一校验，
 即使未启用重试也会对无效参数早失败。

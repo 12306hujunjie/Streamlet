@@ -329,6 +329,7 @@ def node_decorator(
         decorated_func = functools.reduce(lambda func, deco: deco(func), decorators, f)
         node_obj = Node(func=decorated_func, name=node_name, is_async=is_original_async)
         functools.update_wrapper(node_obj, f, updated=())
+        node_obj.__annotations__ = inspect.get_annotations(f, eval_str=False)
         return node_obj
 
     if func is None:

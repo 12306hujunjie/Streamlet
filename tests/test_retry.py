@@ -1,8 +1,11 @@
 """Tests for RetryConfig and @node retry integration."""
 
+import functools
+
 import pytest
 from pydantic import BaseModel, ValidationError
 
+import streamlet.retry as retry_module
 from streamlet import (
     NodeRetryExhaustedException,
     RetryConfig,
@@ -125,6 +128,35 @@ class TestRetryConfig:
             RetryConfig(exception_types=exception_types)
 
 
+class TestGetFuncName:
+    def test_uses_wrapped_func_name_for_partial(self):
+        def original(value: int) -> int:
+            return value
+
+        partial_func = functools.partial(original, 1)
+
+        assert retry_module.get_func_name(partial_func) == "original"
+
+    def test_uses_name_attribute_when_callable_has_no_dunder_name(self):
+        class NamedCallable:
+            name = "configured_name"
+
+            def __call__(self) -> None:
+                pass
+
+        assert retry_module.get_func_name(NamedCallable()) == "configured_name"
+
+    def test_uses_explicit_fallback_name(self):
+        unnamed = object()
+
+        assert retry_module.get_func_name(unnamed, "fallback") == "fallback"
+
+    def test_uses_unknown_function_when_no_name_is_available(self):
+        unnamed = object()
+
+        assert retry_module.get_func_name(unnamed) == "unknown_function"
+
+
 class TestNodeWithRetry:
     def test_node_with_enable_retry_succeeds(self):
         call_count = 0
@@ -167,6 +199,42 @@ class TestNodeWithRetry:
         assert exc_info.value.node_name == "flaky_node"
         assert exc_info.value.retry_count == 1
         assert isinstance(exc_info.value.last_exception, TempError)
+
+    def test_node_non_retryable_exception_is_not_retried(self):
+        call_count = 0
+
+        class TempError(Exception):
+            retryable = False
+
+        @node(
+            retry_count=3,
+            retry_delay=0,
+            exception_types=(TempError,),
+            enable_retry=True,
+        )
+        def flaky_node() -> None:
+            nonlocal call_count
+            call_count += 1
+            raise TempError("do not retry")
+
+        with pytest.raises(TempError, match="do not retry"):
+            flaky_node()
+
+        assert call_count == 1
+
+    def test_node_keyboard_interrupt_is_not_wrapped_or_retried(self):
+        call_count = 0
+
+        @node(retry_count=3, retry_delay=0, enable_retry=True)
+        def interrupted_node() -> None:
+            nonlocal call_count
+            call_count += 1
+            raise KeyboardInterrupt("stop now")
+
+        with pytest.raises(KeyboardInterrupt, match="stop now"):
+            interrupted_node()
+
+        assert call_count == 1
 
     def test_node_retries_function_body_pydantic_validation_error(self):
         call_count = 0
@@ -223,3 +291,122 @@ class TestNodeWithRetry:
         result = await flaky_async(5)
         assert result == 10
         assert call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_async_node_awaits_retry_delay_from_config(self, monkeypatch):
+        call_count = 0
+        sleep_delays = []
+
+        class TempError(Exception):
+            retryable = True
+
+        async def fake_sleep(delay: float) -> None:
+            sleep_delays.append(delay)
+
+        monkeypatch.setattr(retry_module.asyncio, "sleep", fake_sleep)
+
+        @node(
+            retry_count=3,
+            retry_delay=0.25,
+            exception_types=(TempError,),
+            backoff_factor=2.0,
+            enable_retry=True,
+        )
+        async def flaky_async(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise TempError("retry")
+            return x * 2
+
+        result = await flaky_async(5)
+
+        assert result == 10
+        assert call_count == 3
+        assert sleep_delays == [0.25, 0.5]
+
+    @pytest.mark.asyncio
+    async def test_async_node_retry_exhausted(self):
+        call_count = 0
+
+        class TempError(Exception):
+            retryable = True
+
+        @node(
+            retry_count=1,
+            retry_delay=0,
+            exception_types=(TempError,),
+            enable_retry=True,
+        )
+        async def flaky_async(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            raise TempError(f"always fails for {x}")
+
+        with pytest.raises(NodeRetryExhaustedException) as exc_info:
+            await flaky_async(5)
+
+        assert call_count == 2
+        assert exc_info.value.node_name == "flaky_async"
+        assert exc_info.value.retry_count == 1
+        assert isinstance(exc_info.value.last_exception, TempError)
+        assert exc_info.value.original_exception is exc_info.value.last_exception
+        assert exc_info.value.__cause__ is exc_info.value.last_exception
+
+    @pytest.mark.asyncio
+    async def test_async_node_non_retryable_exception_is_not_retried(self):
+        call_count = 0
+
+        class TempError(Exception):
+            retryable = False
+
+        @node(
+            retry_count=3,
+            retry_delay=0,
+            exception_types=(TempError,),
+            enable_retry=True,
+        )
+        async def flaky_async() -> None:
+            nonlocal call_count
+            call_count += 1
+            raise TempError("do not retry")
+
+        with pytest.raises(TempError, match="do not retry"):
+            await flaky_async()
+
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_async_node_exception_type_mismatch_is_not_retried(self):
+        call_count = 0
+
+        @node(
+            retry_count=3,
+            retry_delay=0,
+            exception_types=(ValueError,),
+            enable_retry=True,
+        )
+        async def flaky_async() -> None:
+            nonlocal call_count
+            call_count += 1
+            raise TypeError("wrong exception type")
+
+        with pytest.raises(TypeError, match="wrong exception type"):
+            await flaky_async()
+
+        assert call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_async_node_keyboard_interrupt_is_not_wrapped_or_retried(self):
+        call_count = 0
+
+        @node(retry_count=3, retry_delay=0, enable_retry=True)
+        async def interrupted_async() -> None:
+            nonlocal call_count
+            call_count += 1
+            raise KeyboardInterrupt("stop now")
+
+        with pytest.raises(KeyboardInterrupt, match="stop now"):
+            await interrupted_async()
+
+        assert call_count == 1

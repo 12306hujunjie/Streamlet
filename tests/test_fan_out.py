@@ -277,6 +277,59 @@ class TestFanOutErrorHandling:
         all_failed = all(not r.success for r in results.values())
         assert all_failed
 
+    @pytest.mark.parametrize(
+        ("exception_type", "message"),
+        [(KeyboardInterrupt, "interrupted"), (SystemExit, "shutdown")],
+    )
+    def test_thread_executor_propagates_base_exception(
+        self, exception_type: type[BaseException], message: str
+    ):
+        @node
+        def source(value: int) -> int:
+            return value
+
+        @node
+        def interrupted_target(value: int) -> int:
+            raise exception_type(message)
+
+        flow = source.fan_out_to([interrupted_target], executor="thread")
+
+        with pytest.raises(exception_type, match=message):
+            flow(10)
+
+    @pytest.mark.asyncio
+    async def test_async_executor_propagates_cancelled_error(self):
+        @node
+        async def source(value: int) -> int:
+            return value
+
+        @node
+        async def cancelled_target(value: int) -> int:
+            raise asyncio.CancelledError("cancelled")
+
+        flow = source.fan_out_to([cancelled_target], executor="async")
+
+        with pytest.raises(asyncio.CancelledError):
+            await flow(10)
+
+    @pytest.mark.asyncio
+    async def test_auto_executor_propagates_base_exception_from_sync_target(self):
+        class FanOutInterrupted(BaseException):
+            pass
+
+        @node
+        async def source(value: int) -> int:
+            return value
+
+        @node
+        def interrupted_sync_target(value: int) -> int:
+            raise FanOutInterrupted("interrupted")
+
+        flow = source.fan_out_to([interrupted_sync_target], executor="auto")
+
+        with pytest.raises(FanOutInterrupted, match="interrupted"):
+            await flow(10)
+
 
 class TestFanOutWithAsyncSource:
     @pytest.mark.asyncio

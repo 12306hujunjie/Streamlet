@@ -97,6 +97,11 @@ def positive_score() -> Annotated[int, Field(gt=0)]:
 `fan_out_args(...)`，则每个参数字典按顺序对应一个 target，并作为该 target 的
 `kwargs` 调用。裸 `list[dict]` 会被当成普通业务数据广播，不会触发按 target 展开。
 
+target 抛出的普通 `Exception` 会被包装为 `ParallelResult(success=False)`，
+并保留 `error` 与 `error_traceback`；这种普通 target 失败不阻断其他 target。
+取消或进程级中断不会被包装：`asyncio.CancelledError`、`KeyboardInterrupt`、
+`SystemExit` 会向外传播并中断整个 fan-out。
+
 `executor` 取值：
 - `"thread"` — 线程池（默认），更适合 I/O 密集或阻塞型任务
 - `"async"` — `asyncio.gather` 协程调度，只适合真实 `async` 且会主动
@@ -220,6 +225,9 @@ class ParallelResult:
 ```
 
 `fan_out_to` 返回 `dict[str, ParallelResult]`，键为节点名（重复时自动加后缀 `[n]`）。
+`ParallelResult(success=False)` 只表示 target 的普通业务异常被包装；取消、
+`KeyboardInterrupt`、`SystemExit` 等 `BaseException` 路径会直接传播，不会生成
+`ParallelResult`。
 
 ## BaseFlowContext
 

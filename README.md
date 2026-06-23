@@ -56,6 +56,12 @@ target 在 `"async"` executor 下会直接运行在当前 event loop 中，不�
 原始的 `dict[str, ParallelResult]`。fan-out 后如果要继续处理业务结果，应先用
 `.fan_in(aggregator)` 显式聚合，或直接使用 `.fan_out_in(...)`。
 
+fan-out 的失败模型只包装普通业务异常：target 抛出的 `Exception` 会变成
+`ParallelResult(success=False, error=...)`；这种普通 target 失败不阻断其他
+target。
+`asyncio.CancelledError`、`KeyboardInterrupt`、`SystemExit` 等取消或进程级
+中断不会被包装，会向外传播并中断整个 fan-out。
+
 `repeat` 默认使用 `RepeatInputMode.PREVIOUS_RESULT`：第 1 轮执行
 `node(*args, **kwargs)`，之后把每轮成功返回值作为下一轮的单个位置参数。
 如果需要为下一轮指定多个位置参数或关键字参数，返回 `call_args(...)`。

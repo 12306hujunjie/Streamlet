@@ -92,6 +92,47 @@ def get_func_name(func: Any, fallback_name: str | None = None) -> str:
         return "unknown_function"
 
 
+def _log_retry_attempt(config: RetryConfig, func_name: str, attempt: int) -> None:
+    logger.debug(f"执行节点 {func_name}，尝试 {attempt + 1}/{config.retry_count + 1}")
+
+
+def _log_retry_success(func_name: str, attempt: int) -> None:
+    if attempt > 0:
+        logger.info(f"节点 {func_name} 在第 {attempt + 1} 次尝试后成功")
+
+
+def _handle_retry_failure(
+    config: RetryConfig,
+    func_name: str,
+    attempt: int,
+    exception: Exception,
+) -> float | None:
+    if not config.should_retry(exception):
+        logger.debug(
+            f"节点 {func_name} 异常不支持重试: {type(exception).__name__}: {exception}"
+        )
+        return None
+
+    if attempt == config.retry_count:
+        logger.error(
+            f"节点 {func_name} 重试 {config.retry_count} 次后仍失败: "
+            f"{type(exception).__name__}: {exception}"
+        )
+        raise NodeRetryExhaustedException(
+            message=f"节点 {func_name} 重试次数耗尽",
+            node_name=func_name,
+            retry_count=config.retry_count,
+            last_exception=exception,
+        ) from exception
+
+    delay = config.get_delay(attempt)
+    logger.warning(
+        f"节点 {func_name} 第 {attempt + 1} 次尝试失败: "
+        f"{exception}，{delay:.2f}秒后重试"
+    )
+    return delay
+
+
 def retry_decorator(
     config: RetryConfig,
     node_name: str | None = None,
@@ -107,37 +148,16 @@ def retry_decorator(
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 for attempt in range(config.retry_count + 1):
                     try:
-                        logger.debug(
-                            f"执行节点 {func_name}，尝试 {attempt + 1}/{config.retry_count + 1}"
-                        )
+                        _log_retry_attempt(config, func_name, attempt)
                         result = await func(*args, **kwargs)
-                        if attempt > 0:
-                            logger.info(
-                                f"节点 {func_name} 在第 {attempt + 1} 次尝试后成功"
-                            )
+                        _log_retry_success(func_name, attempt)
                         return result
                     except (KeyboardInterrupt, SystemExit):
                         raise
                     except Exception as e:
-                        if not config.should_retry(e):
-                            logger.debug(
-                                f"节点 {func_name} 异常不支持重试: {type(e).__name__}: {e}"
-                            )
+                        delay = _handle_retry_failure(config, func_name, attempt, e)
+                        if delay is None:
                             raise
-                        if attempt == config.retry_count:
-                            logger.error(
-                                f"节点 {func_name} 重试 {config.retry_count} 次后仍失败: {type(e).__name__}: {e}"
-                            )
-                            raise NodeRetryExhaustedException(
-                                message=f"节点 {func_name} 重试次数耗尽",
-                                node_name=func_name,
-                                retry_count=config.retry_count,
-                                last_exception=e,
-                            ) from e
-                        delay = config.get_delay(attempt)
-                        logger.warning(
-                            f"节点 {func_name} 第 {attempt + 1} 次尝试失败: {e}，{delay:.2f}秒后重试"
-                        )
                         await asyncio.sleep(delay)
 
             return async_wrapper
@@ -147,37 +167,16 @@ def retry_decorator(
             def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
                 for attempt in range(config.retry_count + 1):
                     try:
-                        logger.debug(
-                            f"执行节点 {func_name}，尝试 {attempt + 1}/{config.retry_count + 1}"
-                        )
+                        _log_retry_attempt(config, func_name, attempt)
                         result = func(*args, **kwargs)
-                        if attempt > 0:
-                            logger.info(
-                                f"节点 {func_name} 在第 {attempt + 1} 次尝试后成功"
-                            )
+                        _log_retry_success(func_name, attempt)
                         return result
                     except (KeyboardInterrupt, SystemExit):
                         raise
                     except Exception as e:
-                        if not config.should_retry(e):
-                            logger.debug(
-                                f"节点 {func_name} 异常不支持重试: {type(e).__name__}: {e}"
-                            )
+                        delay = _handle_retry_failure(config, func_name, attempt, e)
+                        if delay is None:
                             raise
-                        if attempt == config.retry_count:
-                            logger.error(
-                                f"节点 {func_name} 重试 {config.retry_count} 次后仍失败: {type(e).__name__}: {e}"
-                            )
-                            raise NodeRetryExhaustedException(
-                                message=f"节点 {func_name} 重试次数耗尽",
-                                node_name=func_name,
-                                retry_count=config.retry_count,
-                                last_exception=e,
-                            ) from e
-                        delay = config.get_delay(attempt)
-                        logger.warning(
-                            f"节点 {func_name} 第 {attempt + 1} 次尝试失败: {e}，{delay:.2f}秒后重试"
-                        )
                         time.sleep(delay)
 
             return sync_wrapper

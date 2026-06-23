@@ -13,7 +13,7 @@ from .exceptions import NodeRetryExhaustedException
 logger = logging.getLogger("streamlet")
 
 
-def _validate_exception_types(exception_types: tuple) -> None:
+def _validate_exception_types(exception_types: tuple[type[Exception], ...]) -> None:
     if not isinstance(exception_types, tuple):
         raise TypeError(
             f"exception_types must be a tuple of Exception subclasses, "
@@ -53,7 +53,7 @@ class RetryConfig:
         self,
         retry_count: int = 3,
         retry_delay: float = 1.0,
-        exception_types: tuple = (Exception,),
+        exception_types: tuple[type[Exception], ...] = (Exception,),
         backoff_factor: float = 1.0,
         max_delay: float = 60.0,
     ) -> None:
@@ -139,7 +139,7 @@ def retry_decorator(
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """重试装饰器"""
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         func_name = node_name or get_func_name(func)
 
         if inspect.iscoroutinefunction(func):

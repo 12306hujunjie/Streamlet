@@ -123,7 +123,7 @@ class Node:
 
     def __init__(
         self,
-        func: Callable,
+        func: Callable[..., Any],
         name: str,
         is_async: bool | None = None,
     ) -> None:
@@ -271,7 +271,7 @@ def _has_di_marker(func: Callable[..., Any]) -> bool:
 
 
 @overload
-def node_decorator(func: Callable) -> Node: ...
+def node_decorator(func: Callable[..., Any]) -> Node: ...
 
 
 @overload
@@ -282,25 +282,25 @@ def node_decorator(
     name: str | None = None,
     timeout: float | None = None,
     retry_delay: float = 1.0,
-    exception_types: tuple = (Exception,),
+    exception_types: tuple[type[Exception], ...] = (Exception,),
     backoff_factor: float = 1.0,
     max_delay: float = 60.0,
     enable_retry: bool = False,
-) -> Callable[[Callable], Node]: ...
+) -> Callable[[Callable[..., Any]], Node]: ...
 
 
 def node_decorator(
-    func: Callable | None = None,
+    func: Callable[..., Any] | None = None,
     *,
     retry_count: int = 3,
     name: str | None = None,
     timeout: float | None = None,
     retry_delay: float = 1.0,
-    exception_types: tuple = (Exception,),
+    exception_types: tuple[type[Exception], ...] = (Exception,),
     backoff_factor: float = 1.0,
     max_delay: float = 60.0,
     enable_retry: bool = False,
-) -> Node | Callable:
+) -> Node | Callable[[Callable[..., Any]], Node]:
     """保持现有签名不变。"""
     config = RetryConfig(
         retry_count, retry_delay, exception_types, backoff_factor, max_delay
@@ -308,7 +308,7 @@ def node_decorator(
     timeout = _validate_timeout(timeout)
 
     @functools.wraps(Node)
-    def decorator(f: Callable) -> Node:
+    def decorator(f: Callable[..., Any]) -> Node:
         node_name = name or get_func_name(f, "unnamed_node")
         is_original_async = inspect.iscoroutinefunction(f)
 

@@ -205,8 +205,9 @@ class Repeat:
                 last_result = candidate_result
             except Exception as e:
                 if self.stop_on_error:
+                    message = f"repeat(stop_on_error=True) 在第 {i + 1} 次迭代失败: {e}"
                     raise LoopControlException(
-                        message=f"repeat(stop_on_error=True) 在第 {i + 1} 次迭代失败: {e}",
+                        message=message,
                         node_name=getattr(self.node, "name", None),
                         iteration=i + 1,
                         times=self.times,
@@ -236,8 +237,9 @@ class Repeat:
                 last_result = candidate_result
             except Exception as e:
                 if self.stop_on_error:
+                    message = f"repeat(stop_on_error=True) 在第 {i + 1} 次迭代失败: {e}"
                     raise LoopControlException(
-                        message=f"repeat(stop_on_error=True) 在第 {i + 1} 次迭代失败: {e}",
+                        message=message,
                         node_name=getattr(self.node, "name", None),
                         iteration=i + 1,
                         times=self.times,

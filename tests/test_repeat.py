@@ -66,7 +66,8 @@ class TestRepeatErrorHandling:
     def test_stop_on_error_false_continues(self):
         flow = failing_node.repeat(3, stop_on_error=False)
         result = flow({"value": 0})
-        # When continuing on error, last successful result is returned (None for all-failure)
+        # When continuing on error, last successful result is returned.
+        # For all-failure runs that means None.
         assert result is None
 
 

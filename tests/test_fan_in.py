@@ -36,7 +36,7 @@ class TestFanInBasic:
         flow(10)
         assert len(received) > 0
         data = received[0]
-        for key, val in data.items():
+        for _, val in data.items():
             assert isinstance(val, ParallelResult)
 
     def test_fan_out_args_then_fan_in(self):

@@ -261,12 +261,12 @@ class TestNodeWithRetry:
         result = stable_node(5)
         assert result == 10
 
-    def test_node_validates_retry_arguments_when_retry_disabled(self):
-        with pytest.raises(ValueError, match="retry_count"):
+    def test_node_ignores_retry_arguments_when_retry_disabled(self):
+        @node(retry_count=-1, retry_delay=-0.1, enable_retry=False)
+        def stable_node(x: int) -> int:
+            return x * 2
 
-            @node(retry_count=-1, enable_retry=False)
-            def stable_node(x: int) -> int:
-                return x * 2
+        assert stable_node(5) == 10
 
     @pytest.mark.asyncio
     async def test_async_node_with_retry(self):

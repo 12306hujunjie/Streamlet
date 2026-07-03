@@ -41,6 +41,40 @@ class TestNodeDecoratorCallModes:
 
         assert func.name == "custom_name"
 
+    def test_node_with_direct_func_and_explicit_name(self):
+        def func(x: int) -> int:
+            return x * 2
+
+        decorated = node(func, name="custom_name")
+
+        assert isinstance(decorated, Node)
+        assert decorated.name == "custom_name"
+        assert decorated(5) == 10
+
+    def test_node_with_direct_func_and_retry_options(self):
+        call_count = 0
+
+        class TempError(Exception):
+            retryable = True
+
+        def func(x: int) -> int:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise TempError("retry")
+            return x * 2
+
+        decorated = node(
+            func,
+            retry_count=1,
+            retry_delay=0,
+            exception_types=(TempError,),
+            enable_retry=True,
+        )
+
+        assert decorated(5) == 10
+        assert call_count == 2
+
     def test_plain_node_does_not_emit_di_wiring_warning(self):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")

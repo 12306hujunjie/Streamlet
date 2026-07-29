@@ -57,7 +57,7 @@ jobs:
       run: |
         pdm run ruff check src/ tests/
         pdm run ruff format --check src/ tests/
-        pdm run mypy src/streamlet/
+        pdm run mypy src/streamlet/ tests/typecheck/
         pdm run bandit -r src/
 
     - name: Run tests with pytest

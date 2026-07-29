@@ -2,23 +2,26 @@
 
 ## @node 装饰器
 
-```python
-@node(
+```signature
+node(
+    func: Callable[..., Any] | None = None,
+    *,
+    retry_count: int = 3,
     name: str | None = None,
     timeout: float | None = None,
-    retry_count: int = 3,
     retry_delay: float = 1.0,
-    exception_types: tuple = (Exception,),
+    exception_types: tuple[type[Exception], ...] = (Exception,),
     backoff_factor: float = 1.0,
     max_delay: float = 60.0,
     enable_retry: bool = False,
-)
+) -> Node | Callable[[Callable[..., Any]], Node]
 ```
 
 将函数转为 `Node` 实例，内置 pydantic 类型校验、按需依赖注入和可选重试。
 
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
+| `func` | `Callable[..., Any] \| None` | `None` | 待包装函数；省略时返回装饰器 |
 | `name` | `str \| None` | 函数名 | 节点标识 |
 | `timeout` | `float \| None` | `None` | 单次节点调用超时时间（秒） |
 | `retry_count` | `int` | `3` | 最大重试次数 |
@@ -28,7 +31,8 @@
 | `max_delay` | `float` | `60.0` | 重试延迟上限（秒） |
 | `enable_retry` | `bool` | `False` | 是否启用重试 |
 
-支持两种调用方式：`@node`（无参数）和 `@node(name="n")`（带参数）。
+作为装饰器支持 `@node`（无参数）和 `@node(name="n")`（带参数）；也可直接
+调用 `node(func)` 或 `node(func, name="n", ...)`，并立即返回 `Node`。
 `timeout` 必须为正数；节点调用超过该时间会抛出 `NodeTimeoutException`，
 异常包含 `node_name` 和 `timeout_seconds`。同步函数通过 `func-timeout` 执行，
 异步函数通过 `asyncio.wait_for` 执行。启用重试时，`timeout` 是整次节点调用的
@@ -42,10 +46,12 @@ fan-out 线程池或其他用户线程中，传播的是该调用线程当时的
 context 值只浅拷贝顶层字典，非 `dict` 对象按原引用传播。对象是否可跨线程使用
 由用户保证；线程绑定资源（例如部分 DB session、request scoped 对象、依赖当前
 event loop 的 client）不应直接放入同步 timeout 节点的 context。
+同步 timeout 的上下文传播同样会执行 `copy_policy="strict"` 校验，避免工作线程
+共享嵌套可变状态。
 
-重试只在 `enable_retry=True` 时执行；但 `retry_count`、`retry_delay`、
-`exception_types`、`backoff_factor` 和 `max_delay` 会在装饰器入口统一校验，
-即使未启用重试也会对无效参数早失败。
+重试配置只在 `enable_retry=True` 时构造、校验并执行。未启用重试时，
+`retry_count`、`retry_delay`、`exception_types`、`backoff_factor` 和
+`max_delay` 会被忽略；`timeout` 仍始终校验。
 
 输入校验失败抛出 `ValidationInputException`，返回值校验失败抛出
 `ValidationOutputException`。返回值校验基于函数的返回类型注解，支持
@@ -53,10 +59,12 @@ event loop 的 client）不应直接放入同步 timeout 节点的 context。
 `Annotated[...]` 元数据给 Pydantic 处理。因此可以在返回类型里使用
 Pydantic 模型和 `Field` 约束：
 
+下面用返回 `Any` 的 helper 模拟外部未校验数据，类型转换由节点的输出校验完成。
+
 ```python
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from pydantic import BaseModel, Field
 from streamlet import node
@@ -67,14 +75,26 @@ class User(BaseModel):
     age: int
 
 
-@node
-def create_user() -> User:
+def load_user_payload() -> Any:
     return {"name": "Alice", "age": "30"}
 
 
 @node
+def create_user() -> User:
+    return load_user_payload()
+
+
+def load_score() -> Any:
+    return "100"
+
+
+@node
 def positive_score() -> Annotated[int, Field(gt=0)]:
-    return 100
+    return load_score()
+
+
+assert create_user() == User(name="Alice", age=30)
+assert positive_score() == 100
 ```
 
 依赖注入在函数签名包含 `Provide[...]` / `Provider[...]` 默认值或
@@ -82,11 +102,25 @@ def positive_score() -> Annotated[int, Field(gt=0)]:
 
 ## Node 类
 
-### `then(next_node: Node) -> Node`
+### `then(other: Node) -> Node`
+
+```signature
+then(
+    other: Node,
+) -> Node
+```
 
 顺序连接。前一个节点的输出作为后一个节点的输入。
 
-### `fan_out_to(nodes: list[Node], executor: str = "thread", max_workers: int = None) -> Node`
+### `fan_out_to(nodes: list[Node], executor: str = "thread", max_workers: int | None = None) -> Node`
+
+```signature
+fan_out_to(
+    nodes: list[Node],
+    executor: str = "thread",
+    max_workers: int | None = None,
+) -> Node
+```
 
 并行扇出。source 执行后，每个 target 并行执行。返回 `dict[str, ParallelResult]`。
 如果后面继续调用 `.then(next_node)`，`next_node` 接收的也是这个原始结果字典，
@@ -100,7 +134,8 @@ def positive_score() -> Annotated[int, Field(gt=0)]:
 target 抛出的普通 `Exception` 会被包装为 `ParallelResult(success=False)`，
 并保留 `error` 与 `error_traceback`；这种普通 target 失败不阻断其他 target。
 取消或进程级中断不会被包装：`asyncio.CancelledError`、`KeyboardInterrupt`、
-`SystemExit` 会向外传播并中断整个 fan-out。
+`SystemExit` 会向调用方传播，因此本次 fan-out 不返回结果字典。传播不保证取消
+已经开始执行的 sibling target；这些 target 仍可能继续运行或完成。
 
 `executor` 取值：
 - `"thread"` — 线程池（默认），更适合 I/O 密集或阻塞型任务
@@ -129,21 +164,58 @@ def source(user_id: str):
         {"user_id": user_id, "include_archived": False},
     )
 
+@node
+def fetch_orders(user_id: str, limit: int) -> list[str]:
+    return [f"order:{user_id}:{index}" for index in range(limit)]
+
+@node
+def fetch_profile(user_id: str, include_archived: bool) -> dict:
+    return {"user_id": user_id, "include_archived": include_archived}
+
 flow = source.fan_out_to([fetch_orders, fetch_profile])
+results = flow("u-1")
+assert results["fetch_orders"].result == [
+    f"order:u-1:{index}" for index in range(10)
+]
+assert results["fetch_profile"].result == {
+    "user_id": "u-1",
+    "include_archived": False,
+}
 ```
 
 ### `fan_in(aggregator: Node) -> Node`
+
+```signature
+fan_in(
+    aggregator: Node,
+) -> Node
+```
 
 聚合并行结果。aggregator 接收 `dict[str, ParallelResult]` 参数。
 
 `fan_in` 是 fan-out 后回到普通业务链的显式入口：aggregator 负责检查
 `ParallelResult.success`、处理失败分支，并返回下游 `.then(...)` 真正需要的业务值。
 
-### `fan_out_in(targets: list[Node], aggregator: Node, executor: str = "thread", max_workers: int = None) -> Node`
+### `fan_out_in(targets: list[Node], aggregator: Node, executor: str = "thread", max_workers: int | None = None) -> Node`
+
+```signature
+fan_out_in(
+    targets: list[Node],
+    aggregator: Node,
+    executor: str = "thread",
+    max_workers: int | None = None,
+) -> Node
+```
 
 `fan_out_to` + `fan_in` 组合，一步完成。
 
 ### `branch_on(conditions: dict[Any, Node]) -> Node`
+
+```signature
+branch_on(
+    conditions: dict[Any, Node],
+) -> Node
+```
 
 条件分支。条件节点返回值作为路由键，匹配对应分支节点执行。
 
@@ -152,6 +224,15 @@ flow = source.fan_out_to([fetch_orders, fetch_profile])
 可通过依赖注入读取 `BaseFlowContext.context`。
 
 ### `repeat(times: int, stop_on_error: bool = False, *, input_mode: RepeatInputMode = RepeatInputMode.PREVIOUS_RESULT) -> Node`
+
+```signature
+repeat(
+    times: int,
+    stop_on_error: bool = False,
+    *,
+    input_mode: RepeatInputMode = RepeatInputMode.PREVIOUS_RESULT,
+) -> Node
+```
 
 重复执行节点，并返回最后一次成功执行的结果。
 
@@ -177,12 +258,21 @@ def step(value: int, factor: int = 1) -> CallArgs:
 
 assert step.repeat(3)(2, factor=10) == call_args(2000, factor=10)
 
+load_calls: list[tuple[str, int]] = []
+
 @node
 def load(source: str, limit: int = 10) -> list[str]:
-    return fetch_batch(source, limit=limit)
+    load_calls.append((source, limit))
+    return [f"{source}:{index}" for index in range(limit)]
 
-flow = load.repeat(3, input_mode=RepeatInputMode.SAME_INPUT)
-result = flow("orders", limit=50)
+flow = load.repeat(
+    3,
+    stop_on_error=True,
+    input_mode=RepeatInputMode.SAME_INPUT,
+)
+result = flow("orders", limit=2)
+assert result == ["orders:0", "orders:1"]
+assert load_calls == [("orders", 2)] * 3
 ```
 
 `call_args(*args, **kwargs)` 会创建显式的下一轮调用参数。`PREVIOUS_RESULT` 不会自动展开普通 `tuple` 或 `dict`；这些类型会被视为业务返回值，作为一个位置参数传入下一轮。
@@ -193,7 +283,7 @@ result = flow("orders", limit=50)
 
 ## RetryConfig
 
-```python
+```signature
 RetryConfig(
     retry_count: int = 3,
     retry_delay: float = 1.0,
@@ -213,8 +303,7 @@ RetryConfig(
 
 ## ParallelResult
 
-```python
-@dataclass
+```signature
 class ParallelResult:
     node_name: str
     success: bool
@@ -227,13 +316,14 @@ class ParallelResult:
 `fan_out_to` 返回 `dict[str, ParallelResult]`，键为节点名（重复时自动加后缀 `[n]`）。
 `ParallelResult(success=False)` 只表示 target 的普通业务异常被包装；取消、
 `KeyboardInterrupt`、`SystemExit` 等 `BaseException` 路径会直接传播，不会生成
-`ParallelResult`。
+`ParallelResult`，fan-out 也不会返回结果字典。已经开始执行的 sibling target
+不保证被取消，仍可能继续运行或完成。
 
 ## BaseFlowContext
 
 依赖注入容器，继承 `dependency-injector` 的 `DeclarativeContainer`。
 
-```python
+```python compile-only
 container = BaseFlowContext()
 container.wire(modules=[__name__])
 ```
@@ -255,6 +345,8 @@ def my_node(context: dict = Provide[BaseFlowContext.context]) -> dict:
     return {"data": context["key"]}
 
 container.wire(modules=[__name__])  # 必须在 @node 定义之后调用
+container.context()["key"] = "value"
+assert my_node() == {"data": "value"}
 ```
 
 fan-out 分支复制父上下文时，默认只浅拷贝顶层 `dict`。这会隔离顶层 key 的新增、
@@ -263,7 +355,7 @@ fan-out 分支复制父上下文时，默认只浅拷贝顶层 `dict`。这会�
 
 ## ContextVarProvider
 
-```python
+```signature
 ContextVarProvider(
     default_factory: Callable[[], Any] = dict,
     copy_policy: str = "shallow",
@@ -274,14 +366,14 @@ ContextVarProvider(
 默认使用 `ContextVarProvider(dict)`。
 
 `copy_policy` 取值：
-- `"shallow"` — 默认策略；fan-out 隔离时只浅拷贝顶层 `dict`
-- `"strict"` — fan-out 隔离时拒绝嵌套可变值和非 `dict` 可变 context 值，不做
-  递归深拷贝
+- `"shallow"` — 默认策略；跨执行上下文传播时只浅拷贝顶层 `dict`
+- `"strict"` — fan-out 或同步 timeout 传播时拒绝嵌套可变值和非 `dict` 可变
+  context 值，不做递归深拷贝
 
-`strict` 的目标是提前暴露浅拷贝无法隔离的共享状态风险，而不是自动复制这些
-对象。直接作为 value 的 `list` / `dict` / `set` 会被拒绝，包含在 `tuple` /
-`frozenset` 等不可变容器里的可变值也会被拒绝，例如
-`{"items": ("header", [])}`。
+`strict` 是跨执行上下文传播的风险门禁，目标是提前暴露浅拷贝无法隔离的共享状态
+风险，而不是自动复制这些对象。直接作为 value 的 `list` / `dict` / `set` 会被
+拒绝，包含在 `tuple` / `frozenset` 等不可变容器里的可变值也会被拒绝，例如
+`{"items": ("header", [])}`。普通节点调用不会触发这项校验。
 
 需要让嵌套可变状态在 fan-out 前失败时，可定义自定义 context 容器：
 
@@ -292,16 +384,17 @@ class StrictFlowContext(BaseFlowContext):
     context = ContextVarProvider(dict, copy_policy="strict")
 ```
 
-## retry_decorator
+## `streamlet.retry.retry_decorator`
 
-```python
+```signature
 retry_decorator(
     config: RetryConfig,
     node_name: str | None = None,
-) -> Callable
+) -> Callable[[Callable[..., Any]], Callable[..., Any]]
 ```
 
-独立重试装饰器（`@node` 内部使用 `enable_retry=True` 时自动调用）。支持同步和异步函数。
+模块级重试装饰器，未从 `streamlet` 顶层重导出；`@node` 在
+`enable_retry=True` 时会调用它。支持同步和异步函数。
 
 ## 异常类
 

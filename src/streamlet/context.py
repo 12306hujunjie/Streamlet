@@ -101,9 +101,10 @@ class ContextVarProvider(providers.Provider):
 
 
 def capture_context() -> dict[int, Any]:
-    """捕获所有 ContextVarProvider 当前值的快照（fan-out 隔离用）。
+    """捕获所有 ContextVarProvider 当前值的快照。
 
-    仅捕获已初始化的值，不触发 lazy init。
+    用于 fan-out 分支隔离和同步 timeout worker 的上下文传播；仅捕获已初始化的
+    值，不触发 lazy init。
     """
 
     snapshot = {}
@@ -120,6 +121,8 @@ def apply_context(snapshot: dict[int, Any]) -> None:
     同时用于：
     - AsyncExecutor.agather：asyncio Task 间隔离
     - SyncExecutor.gather：线程池 worker 间隔离（线程复用场景）
+    - 同步 timeout：向 func-timeout worker 传播调用线程的上下文
+
     """
 
     for provider in list(_CONTEXTVAR_PROVIDERS):

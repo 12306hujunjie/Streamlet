@@ -49,6 +49,8 @@ dev = [
     "mypy>=1.13.0",
     "bandit>=1.7.10",
     "pytest-asyncio>=1.1.0",
+    "markdown-it-py>=4.2.0",
+    "typing-extensions>=4.12.0",
 ]
 
 # Ruff configuration

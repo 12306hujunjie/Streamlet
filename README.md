@@ -30,7 +30,7 @@ def double(x: int) -> int:
 def add_ten(x: int) -> int:
     return x + 10
 
-result = double.then(add_ten)(5)  # 20
+assert double.then(add_ten)(5) == 20
 ```
 
 ## 核心 API
@@ -60,7 +60,8 @@ fan-out 的失败模型只包装普通业务异常：target 抛出的 `Exception
 `ParallelResult(success=False, error=...)`；这种普通 target 失败不阻断其他
 target。
 `asyncio.CancelledError`、`KeyboardInterrupt`、`SystemExit` 等取消或进程级
-中断不会被包装，会向外传播并中断整个 fan-out。
+中断不会被包装，而是向调用方传播，因此本次 fan-out 不返回结果字典。传播不
+保证取消已经开始执行的 sibling target；这些 target 仍可能继续运行或完成。
 
 `repeat` 默认使用 `RepeatInputMode.PREVIOUS_RESULT`：第 1 轮执行
 `node(*args, **kwargs)`，之后把每轮成功返回值作为下一轮的单个位置参数。
@@ -82,12 +83,21 @@ def step(value: int, factor: int = 1) -> CallArgs:
 
 assert step.repeat(3)(2, factor=10) == call_args(2000, factor=10)
 
-@node
-def collect(source: str, limit: int = 10) -> list[str]:
-    return fetch_batch(source, limit=limit)
+fetch_calls: list[tuple[str, int]] = []
 
-flow = collect.repeat(3, input_mode=RepeatInputMode.SAME_INPUT)
-results = flow("orders", limit=50)
+@node
+def fetch(source: str, limit: int = 10) -> list[str]:
+    fetch_calls.append((source, limit))
+    return [f"{source}:{index}" for index in range(limit)]
+
+flow = fetch.repeat(
+    3,
+    stop_on_error=True,
+    input_mode=RepeatInputMode.SAME_INPUT,
+)
+results = flow("orders", limit=2)
+assert results == ["orders:0", "orders:1"]
+assert fetch_calls == [("orders", 2)] * 3
 ```
 
 `@node` 内置 Pydantic 输入和返回值校验。返回值校验支持
@@ -124,7 +134,11 @@ pipeline = fetch_data.then(validate).then(enrich)
 
 async def main():
     result = await pipeline("db")
-    print(result)  # {"value": 100, "source": "db", "doubled": 200}
+    assert result == {
+        "value": 100,
+        "source": "db",
+        "doubled": 200,
+    }
 
 asyncio.run(main())
 ```
@@ -153,7 +167,8 @@ def aggregate(results: dict) -> dict:
 
 workflow = source.fan_out_to([multiply, add_ten], executor="thread").fan_in(aggregate)
 result = workflow(5)
-print(result)  # {"total": 25, "results": [10, 15]}
+assert result["total"] == 25
+assert sorted(result["results"]) == [10, 15]
 ```
 
 注意：`fan_out_to([multiply, add_ten]).then(next_node)` 会把
@@ -164,6 +179,8 @@ source 返回普通值时，所有 target 接收同一个单参数；需要为�
 传递不同 kwargs 时，返回显式的 `fan_out_args`：
 
 ```python
+from streamlet import fan_out_args, node
+
 @node
 def route(user_id: str):
     return fan_out_args(
@@ -171,7 +188,23 @@ def route(user_id: str):
         {"user_id": user_id, "include_archived": False},
     )
 
+@node
+def fetch_orders(user_id: str, limit: int) -> list[str]:
+    return [f"order:{user_id}:{index}" for index in range(limit)]
+
+@node
+def fetch_profile(user_id: str, include_archived: bool) -> dict:
+    return {"user_id": user_id, "include_archived": include_archived}
+
 flow = route.fan_out_to([fetch_orders, fetch_profile])
+results = flow("u-1")
+assert results["fetch_orders"].result == [
+    f"order:u-1:{index}" for index in range(10)
+]
+assert results["fetch_profile"].result == {
+    "user_id": "u-1",
+    "include_archived": False,
+}
 ```
 
 ### 条件流：分支路由 + 依赖注入
@@ -198,7 +231,10 @@ container.wire(modules=[__name__])
 container.context()["score"] = 75
 
 flow = evaluate.branch_on({"pass": handle_pass, "fail": handle_fail})
-print(flow({"score": 75}))  # {"result": "pass", "score": 75}
+assert flow({"score": 80}) == {
+    "result": "pass",
+    "score": 75,
+}
 ```
 
 `branch_on` 的语义是：条件节点接收调用输入并返回路由键，选中的分支节点
@@ -217,20 +253,31 @@ class StrictFlowContext(BaseFlowContext):
     context = ContextVarProvider(dict, copy_policy="strict")
 ```
 
-`copy_policy="strict"` 不会递归深拷贝 context；它会在 fan-out 隔离时检测并拒绝
-会被浅拷贝共享的可变值，让共享状态风险尽早暴露。直接的 `list` / `dict` /
-`set` 会被拒绝，藏在 `tuple` / `frozenset` 等不可变容器里的可变值也会被拒绝，
-例如 `{"items": ("header", [])}`。
+`copy_policy="strict"` 不会递归深拷贝 context；它会在 fan-out 或同步 `timeout`
+跨执行上下文传播时，拒绝被浅拷贝共享的可变值，让共享状态风险尽早暴露。直接的
+`list` / `dict` / `set` 会被拒绝，藏在 `tuple` / `frozenset` 等不可变容器里的
+可变值也会被拒绝，例如 `{"items": ("header", [])}`。
 
 ### 重试机制
 
 ```python
 from streamlet import node
 
-@node(retry_count=3, retry_delay=0.5, backoff_factor=2.0, enable_retry=True)
+attempts = 0
+
+def call_external_api(x: int) -> int:
+    global attempts
+    attempts += 1
+    if attempts == 1:
+        raise ConnectionError("temporary failure")
+    return x * 2
+
+@node(retry_count=3, retry_delay=0, enable_retry=True)
 def external_call(x: int) -> int:
-    # 失败时自动重试，延迟按 0.5s → 1.0s → 2.0s 指数增长
     return call_external_api(x)
+
+assert external_call(5) == 10
+assert attempts == 2
 ```
 
 ## 开发环境
@@ -244,7 +291,7 @@ pdm install
 pdm run pytest                                   # 运行测试
 pdm run pytest --cov=src/streamlet              # 覆盖率
 pdm run ruff check src/ tests/                   # 代码检查
-pdm run mypy src/streamlet/                     # 类型检查
+pdm run mypy src/streamlet/ tests/typecheck/    # 类型检查
 ```
 
 ## 技术栈

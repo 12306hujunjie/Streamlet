@@ -10,11 +10,22 @@ from typing import Annotated
 import pytest
 from dependency_injector.wiring import Provide
 
-from streamlet import BaseFlowContext, Node, NodeTimeoutException, node
+from streamlet import (
+    BaseFlowContext,
+    ContextVarProvider,
+    Node,
+    NodeTimeoutException,
+    node,
+)
 
 
 async def _resolve_value(value: int) -> int:
     return value
+
+
+@node(name="strict_timeout_probe", timeout=1)
+def _strict_timeout_probe() -> None:
+    return None
 
 
 class TestNodeDecoratorCallModes:
@@ -176,6 +187,20 @@ class TestNodeDecoratorTimeout:
         container.wire(modules=[__name__])
 
         assert sync_timeout_di() == "value"
+
+    def test_sync_node_timeout_enforces_strict_context_validation(self):
+        class StrictFlowContext(BaseFlowContext):
+            context = ContextVarProvider(dict, copy_policy="strict")
+
+        container = StrictFlowContext()
+        parent_context = container.context()
+        parent_context["items"] = []
+
+        try:
+            with pytest.raises(ValueError, match="context key 'items'.*nested mutable"):
+                _strict_timeout_probe()
+        finally:
+            parent_context.clear()
 
     @pytest.mark.asyncio
     async def test_async_node_timeout_raises(self):

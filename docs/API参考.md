@@ -33,15 +33,17 @@ node(
 
 作为装饰器支持 `@node`（无参数）和 `@node(name="n")`（带参数）；也可直接
 调用 `node(func)` 或 `node(func, name="n", ...)`，并立即返回 `Node`。
-`timeout` 必须为正数；节点调用超过该时间会抛出 `NodeTimeoutException`，
+`timeout` 必须为有限正数；节点调用超过该时间会抛出 `NodeTimeoutException`，
 异常包含 `node_name` 和 `timeout_seconds`。同步函数通过 `func-timeout` 执行，
 异步函数通过 `asyncio.wait_for` 执行。启用重试时，`timeout` 是整次节点调用的
 总预算，包含全部重试尝试和重试间隔。同步超时是 Python 级中断，不是进程级
 强杀；如果用户函数长时间停在不可中断的 C 扩展、系统调用，或主动吞掉超时异常，
 底层执行可能无法立即停止。
+节点内部自己抛出的 `TimeoutError` 保持原异常，不会被误标记为节点预算耗尽。
 
 同步 `timeout` 会在 `func-timeout` 的工作线程中执行节点调用。Streamlet 会把
-自身 `ContextVarProvider` 的当前快照传播到该工作线程；若调用本身已经位于
+普通 `ContextVar` 以及自身 `ContextVarProvider` 的当前快照传播到该工作线程；
+工作线程对普通 `ContextVar` 的重新赋值不会写回调用方。若调用本身已经位于
 fan-out 线程池或其他用户线程中，传播的是该调用线程当时的快照。`dict` 类型的
 context 值只浅拷贝顶层字典，非 `dict` 对象按原引用传播。对象是否可跨线程使用
 由用户保证；线程绑定资源（例如部分 DB session、request scoped 对象、依赖当前
@@ -98,7 +100,10 @@ assert positive_score() == 100
 ```
 
 依赖注入在函数签名包含 `Provide[...]` / `Provider[...]` 默认值或
-`Annotated[..., Provide[...]]` 元数据时按需启用。
+`Annotated[..., Provide[...]]` 元数据时按需启用，支持延迟注解。
+这些标记参数属于依赖对象，按原引用传递，不进行 Pydantic 输入转换；即使调用方
+显式提供该参数，也保留同一规则。依赖类型与生命周期由容器或调用方保证。
+其余业务输入和返回值继续接受校验与类型转换。
 
 ## Node 类
 
@@ -111,6 +116,7 @@ then(
 ```
 
 顺序连接。前一个节点的输出作为后一个节点的输入。
+嵌套顺序链按迭代方式执行，不会因链长度耗尽 Python 递归调用栈。
 
 ### `fan_out_to(nodes: list[Node], executor: str = "thread", max_workers: int | None = None) -> Node`
 
@@ -123,6 +129,7 @@ fan_out_to(
 ```
 
 并行扇出。source 执行后，每个 target 并行执行。返回 `dict[str, ParallelResult]`。
+构建时复制目标列表；之后修改调用方的列表不会改变已构建流程。
 如果后面继续调用 `.then(next_node)`，`next_node` 接收的也是这个原始结果字典，
 不是成功结果列表或自动解包后的业务值。fan-out 后继续业务链时，应先调用
 `.fan_in(aggregator)` 显式聚合，或使用 `.fan_out_in(...)`。
@@ -218,6 +225,7 @@ branch_on(
 ```
 
 条件分支。条件节点返回值作为路由键，匹配对应分支节点执行。
+构建时复制路由字典；之后修改调用方的字典不会改变已构建流程。
 
 `branch_on` 只向条件节点传递调用输入；选中的分支节点以零参数执行。
 框架不会把原始输入或条件返回值传给分支。分支节点需要业务数据时，
@@ -300,6 +308,7 @@ RetryConfig(
 ### `get_delay(attempt: int) -> float`
 
 计算第 N 次重试的等待时间：`retry_delay * backoff_factor^attempt`，上限 `max_delay`。
+延迟、退避乘数和上限必须为有限非负数；零延迟保持为零，指数溢出时仍遵守上限。
 
 ## ParallelResult
 
@@ -352,6 +361,11 @@ assert my_node() == {"data": "value"}
 fan-out 分支复制父上下文时，默认只浅拷贝顶层 `dict`。这会隔离顶层 key 的新增、
 删除和替换，但不会隔离嵌套的 `list` / `dict` / `set` 等可变 value；这些对象
 仍会在分支之间共享引用。
+
+同一上下文内的顺序节点可以通过注入的字典共享状态。不同顶层流程的调用不会自动
+创建独立请求作用域：若父任务已经初始化了可变 context，新建 asyncio task 可能
+继承同一对象。并发请求应在各自任务内初始化状态，或直接通过函数参数传递请求数据。
+fan-out 的分支隔离仍由框架负责。
 
 ## ContextVarProvider
 

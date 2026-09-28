@@ -1,41 +1,14 @@
 """测试 executor.py —— SyncExecutor / AsyncExecutor / 并行 / 错误处理。"""
 
 import asyncio
-import inspect
 import threading
 
 import pytest
 
 import streamlet.executor as executor_module
-from streamlet import BaseFlowContext
+from streamlet import BaseFlowContext, Node
 from streamlet.context import ContextVarProvider
 from streamlet.executor import AsyncExecutor, SyncExecutor
-
-# ============================================================
-# Stub Node —— 实现 _execute / _execute_async 接口
-# ============================================================
-
-
-class StubNode:
-    """最小化 Node stub，供 executor 测试使用。"""
-
-    def __init__(self, name: str, func, is_async: bool = False):
-        self.name = name
-        self._func = func
-        self._is_async = is_async
-
-    def _execute(self, *args, **kwargs):
-        result = self._func(*args, **kwargs)
-        if inspect.iscoroutine(result):
-            return asyncio.run(result)
-        return result
-
-    async def _execute_async(self, *args, **kwargs):
-        result = self._func(*args, **kwargs)
-        if inspect.iscoroutine(result):
-            return await result
-        return result
-
 
 # ============================================================
 # SyncExecutor 测试
@@ -46,7 +19,7 @@ class TestSyncExecutorRun:
     """SyncExecutor.run() 通过 node._execute() 调用节点。"""
 
     def test_run_sync_node(self):
-        node = StubNode("double", lambda x: x * 2)
+        node = Node(lambda x: x * 2, name="double")
         ex = SyncExecutor()
         assert ex.run(node, 5) == 10
 
@@ -54,12 +27,12 @@ class TestSyncExecutorRun:
         async def afunc(x):
             return x * 3
 
-        node = StubNode("triple", afunc, is_async=True)
+        node = Node(afunc, name="triple", is_async=True)
         ex = SyncExecutor()
         assert ex.run(node, 4) == 12
 
     def test_run_passes_args_and_kwargs(self):
-        node = StubNode("concat", lambda a, b, suffix="": f"{a}{b}{suffix}")
+        node = Node(lambda a, b, suffix="": f"{a}{b}{suffix}", name="concat")
         ex = SyncExecutor()
         assert ex.run(node, "x", "y", suffix="!") == "xy!"
 
@@ -75,9 +48,9 @@ class TestSyncExecutorGather:
             barrier.wait(timeout=2)
             return result
 
-        slow = StubNode("slow", lambda x: wait_for_peers(x * 2))
-        fast = StubNode("fast", lambda x: wait_for_peers(x + 10))
-        triple = StubNode("triple", lambda x: wait_for_peers(x * 3))
+        slow = Node(lambda x: wait_for_peers(x * 2), name="slow")
+        fast = Node(lambda x: wait_for_peers(x + 10), name="fast")
+        triple = Node(lambda x: wait_for_peers(x * 3), name="triple")
         ex = SyncExecutor(max_workers=4)
 
         results = ex.gather([(slow, 1), (fast, 2), (triple, 3)])
@@ -90,7 +63,7 @@ class TestSyncExecutorGather:
 
     def test_gather_same_node_auto_dedup(self):
         """同名节点自动追加后缀 [1], [2], ..."""
-        node = StubNode("worker", lambda x: x * 2)
+        node = Node(lambda x: x * 2, name="worker")
         ex = SyncExecutor()
 
         results = ex.gather([(node, 1), (node, 10), (node, 100)])
@@ -102,8 +75,8 @@ class TestSyncExecutorGather:
 
     def test_gather_custom_key_func(self):
         """自定义 key_func 控制结果键名。"""
-        a = StubNode("a", lambda x: x + 1)
-        b = StubNode("b", lambda x: x * 10)
+        a = Node(lambda x: x + 1, name="a")
+        b = Node(lambda x: x * 10, name="b")
         ex = SyncExecutor()
 
         results = ex.gather(
@@ -115,7 +88,7 @@ class TestSyncExecutorGather:
         assert results["result_b"].result == 20
 
     def test_gather_passes_args_and_kwargs(self):
-        node = StubNode("concat", lambda a, b, suffix="": f"{a}{b}{suffix}")
+        node = Node(lambda a, b, suffix="": f"{a}{b}{suffix}", name="concat")
         ex = SyncExecutor()
 
         results = ex.gather([(node, ("x", "y"), {"suffix": "!"})])
@@ -126,7 +99,7 @@ class TestSyncExecutorGather:
         def fail(_):
             raise ValueError("boom")
 
-        node = StubNode("failer", fail)
+        node = Node(fail, name="failer")
         ex = SyncExecutor()
 
         results = ex.gather([(node, 1)])
@@ -136,7 +109,7 @@ class TestSyncExecutorGather:
         assert results["failer"].error_traceback is not None
 
     def test_execution_time_uses_monotonic_clock(self, monkeypatch):
-        node = StubNode("timed", lambda x: x)
+        node = Node(lambda x: x, name="timed")
         ex = SyncExecutor()
 
         wall_clock_values = iter([100.0, 90.0])
@@ -163,7 +136,7 @@ class TestAsyncExecutorARun:
 
     @pytest.mark.asyncio
     async def test_arun_sync_node(self):
-        node = StubNode("double", lambda x: x * 2)
+        node = Node(lambda x: x * 2, name="double")
         ex = AsyncExecutor()
         result = await ex.arun(node, 5)
         assert result == 10
@@ -174,7 +147,7 @@ class TestAsyncExecutorARun:
             await asyncio.sleep(0)
             return x * 3
 
-        node = StubNode("triple", afunc, is_async=True)
+        node = Node(afunc, name="triple", is_async=True)
         ex = AsyncExecutor()
         result = await ex.arun(node, 4)
         assert result == 12
@@ -205,9 +178,9 @@ class TestAsyncExecutorAGather:
         async def triple(x):
             return await wait_for_peers("triple", x * 3)
 
-        a = StubNode("slow", slow, is_async=True)
-        b = StubNode("fast", fast, is_async=True)
-        c = StubNode("triple", triple, is_async=True)
+        a = Node(slow, name="slow", is_async=True)
+        b = Node(fast, name="fast", is_async=True)
+        c = Node(triple, name="triple", is_async=True)
         ex = AsyncExecutor()
 
         results = await ex.agather([(a, 1), (b, 2), (c, 3)])
@@ -222,7 +195,7 @@ class TestAsyncExecutorAGather:
     @pytest.mark.asyncio
     async def test_agather_same_node_auto_dedup(self):
         """同名节点自动追加后缀。"""
-        node = StubNode("worker", lambda x: x * 2)
+        node = Node(lambda x: x * 2, name="worker")
         ex = AsyncExecutor()
 
         results = await ex.agather([(node, 1), (node, 10)])
@@ -234,8 +207,8 @@ class TestAsyncExecutorAGather:
     @pytest.mark.asyncio
     async def test_agather_custom_key_func(self):
         """自定义 key_func 控制结果键名。"""
-        a = StubNode("a", lambda x: x + 1)
-        b = StubNode("b", lambda x: x * 10)
+        a = Node(lambda x: x + 1, name="a")
+        b = Node(lambda x: x * 10, name="b")
         ex = AsyncExecutor()
 
         results = await ex.agather(
@@ -248,7 +221,7 @@ class TestAsyncExecutorAGather:
 
     @pytest.mark.asyncio
     async def test_agather_passes_args_and_kwargs(self):
-        node = StubNode("concat", lambda a, b, suffix="": f"{a}{b}{suffix}")
+        node = Node(lambda a, b, suffix="": f"{a}{b}{suffix}", name="concat")
         ex = AsyncExecutor()
 
         results = await ex.agather([(node, ("x", "y"), {"suffix": "?"})])
@@ -260,7 +233,7 @@ class TestAsyncExecutorAGather:
         def fail(_):
             raise ValueError("async boom")
 
-        node = StubNode("failer", fail)
+        node = Node(fail, name="failer")
         ex = AsyncExecutor()
 
         results = await ex.agather([(node, 1)])
@@ -271,7 +244,7 @@ class TestAsyncExecutorAGather:
 
     @pytest.mark.asyncio
     async def test_execution_time_uses_monotonic_clock(self, monkeypatch):
-        node = StubNode("timed", lambda x: x)
+        node = Node(lambda x: x, name="timed")
         ex = AsyncExecutor()
 
         wall_clock_values = iter([100.0, 90.0])
@@ -306,7 +279,7 @@ class TestContextVarPropagation:
         def read_ctx_var(x):
             return cv.get()
 
-        node = StubNode("ctx_reader", read_ctx_var)
+        node = Node(read_ctx_var, name="ctx_reader")
         ex = SyncExecutor()
 
         results = ex.gather([(node, 1)])
@@ -324,7 +297,7 @@ class TestContextVarPropagation:
             await asyncio.sleep(0)
             return cv.get()
 
-        node = StubNode("async_ctx_reader", read_ctx_var, is_async=True)
+        node = Node(read_ctx_var, name="async_ctx_reader", is_async=True)
         ex = AsyncExecutor()
 
         results = await ex.agather([(node, 1)])
@@ -356,8 +329,8 @@ class TestSyncExecutorContextIsolation:
             return (parent_val, sorted(ctx.keys()))
 
         ex = SyncExecutor(max_workers=2)
-        node_a = StubNode("a", lambda x: mutate_context("a"))
-        node_b = StubNode("b", lambda x: mutate_context("b"))
+        node_a = Node(lambda x: mutate_context("a"), name="a")
+        node_b = Node(lambda x: mutate_context("b"), name="b")
 
         results = ex.gather([(node_a, 1), (node_b, 1)])
 
@@ -398,8 +371,8 @@ class TestAsyncExecutorContextIsolation:
             return (parent_val, sorted(ctx.keys()))
 
         ex = AsyncExecutor()
-        node_a = StubNode("a", lambda x: mutate_context("a"), is_async=True)
-        node_b = StubNode("b", lambda x: mutate_context("b"), is_async=True)
+        node_a = Node(lambda x: mutate_context("a"), name="a", is_async=True)
+        node_b = Node(lambda x: mutate_context("b"), name="b", is_async=True)
 
         results = await ex.agather([(node_a, 1), (node_b, 1)])
 
@@ -429,7 +402,7 @@ class TestStrictContextPolicy:
         context["items"] = []
 
         ex = SyncExecutor()
-        node = StubNode("reader", lambda x: x)
+        node = Node(lambda x: x, name="reader")
 
         try:
             with pytest.raises(ValueError, match="context key 'items'.*nested mutable"):
@@ -443,7 +416,7 @@ class TestStrictContextPolicy:
         context["items"] = ("header", [])
 
         ex = SyncExecutor()
-        node = StubNode("reader", lambda x: x)
+        node = Node(lambda x: x, name="reader")
 
         try:
             with pytest.raises(ValueError, match="context key 'items'.*nested mutable"):
@@ -458,7 +431,7 @@ class TestStrictContextPolicy:
         context["items"] = []
 
         ex = AsyncExecutor()
-        node = StubNode("reader", lambda x: x)
+        node = Node(lambda x: x, name="reader")
 
         try:
             with pytest.raises(ValueError, match="context key 'items'.*nested mutable"):

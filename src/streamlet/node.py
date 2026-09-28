@@ -1,10 +1,12 @@
 """Node —— 用户唯一接触的类型。_func 存储原始函数或 Graph 内部类。"""
 
 import asyncio
+import contextvars
 import functools
 import inspect
+import math
 from collections.abc import Callable
-from typing import Annotated, Any, get_args, get_origin, overload
+from typing import Annotated, Any, cast, get_args, get_origin, get_type_hints, overload
 
 from dependency_injector.wiring import Provide as _DIProvide
 from dependency_injector.wiring import Provider as _DIProvider
@@ -12,9 +14,14 @@ from dependency_injector.wiring import inject as _di_inject
 from func_timeout import FunctionTimedOut, func_timeout  # type: ignore[import-untyped]
 from pydantic import ConfigDict
 
-from .context import _custom_validate_call, apply_context, capture_context
+from .context import (
+    _custom_validate_call,
+    _reject_sync_awaitable,
+    apply_context,
+    capture_context,
+)
 from .exceptions import NodeTimeoutException
-from .graph import Conditional, FanIn, Parallel, Pipeline, Repeat
+from .graph import Conditional, Parallel, Pipeline, Repeat
 from .retry import RetryConfig, get_func_name, retry_decorator
 from .types import RepeatInputMode
 
@@ -60,8 +67,8 @@ def _validate_timeout(value: Any) -> float | None:
         return None
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise TypeError(f"timeout must be a number or None, got {type(value).__name__}")
-    if value <= 0:
-        raise ValueError("timeout must be greater than 0")
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError("timeout must be finite and greater than 0")
     return float(value)
 
 
@@ -74,9 +81,13 @@ def _timeout_decorator(
 
             @functools.wraps(func)
             async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+                task = asyncio.create_task(func(*args, **kwargs))
                 try:
-                    return await asyncio.wait_for(func(*args, **kwargs), timeout)
+                    return await asyncio.wait_for(task, timeout)
                 except asyncio.TimeoutError as exc:
+                    if not task.cancelled():
+                        # The function raised its own TimeoutError within the budget.
+                        raise
                     raise NodeTimeoutException(
                         message=f"节点 {node_name} 执行超时",
                         node_name=node_name,
@@ -87,6 +98,7 @@ def _timeout_decorator(
 
         @functools.wraps(func)
         def sync_wrapper(*args: Any, **kwargs: Any) -> Any:
+            parent_context = contextvars.copy_context()
             context_snapshot = capture_context()
 
             def run_with_context() -> Any:
@@ -94,7 +106,9 @@ def _timeout_decorator(
                 return func(*args, **kwargs)
 
             try:
-                return func_timeout(timeout, run_with_context)
+                return func_timeout(
+                    timeout, parent_context.run, args=(run_with_context,)
+                )
             except FunctionTimedOut as exc:
                 raise NodeTimeoutException(
                     message=f"节点 {node_name} 执行超时",
@@ -105,17 +119,6 @@ def _timeout_decorator(
         return sync_wrapper
 
     return decorator
-
-
-def _reject_sync_awaitable(result: Any, node_name: str) -> None:
-    if not inspect.isawaitable(result):
-        return
-    if inspect.iscoroutine(result):
-        result.close()
-    raise TypeError(
-        f"sync node '{node_name}' returned an awaitable; "
-        "define the node function with 'async def' instead"
-    )
 
 
 class Node:
@@ -208,7 +211,7 @@ class Node:
 
     def fan_in(self, aggregator: "Node") -> "Node":
         aggregator = _validate_node(aggregator, "aggregator")
-        fan_in = FanIn(self, aggregator)
+        fan_in = Pipeline(self, aggregator)
         return Node(fan_in, name=f"...⤇{aggregator.name}")
 
     def branch_on(self, conditions: dict[Any, "Node"]) -> "Node":
@@ -253,15 +256,6 @@ def _is_di_marker(value: Any) -> bool:
 def _annotation_has_di_marker(annotation: Any) -> bool:
     return get_origin(annotation) is Annotated and any(
         _is_di_marker(metadata) for metadata in get_args(annotation)[1:]
-    )
-
-
-def _has_di_marker(func: Callable[..., Any]) -> bool:
-    """Return whether the function signature asks dependency-injector to resolve DI."""
-
-    return any(
-        _is_di_marker(param.default) or _annotation_has_di_marker(param.annotation)
-        for param in inspect.signature(func).parameters.values()
     )
 
 
@@ -330,22 +324,37 @@ def node_decorator(
     def decorator(f: Callable[..., Any]) -> Node:
         node_name = name or get_func_name(f, "unnamed_node")
         is_original_async = inspect.iscoroutinefunction(f)
-
-        decorators = [
-            _custom_validate_call(
-                validate_return=True,
-                config=ConfigDict(arbitrary_types_allowed=True),
-                node_name=node_name,
-            ),
+        hints = get_type_hints(f, include_extras=True)
+        signature = inspect.signature(f)
+        parameters = [
+            param.replace(annotation=hints.get(param.name, param.annotation))
+            for param in signature.parameters.values()
         ]
-        if config is not None:
-            decorators.append(retry_decorator(config=config, node_name=node_name))
-        if _has_di_marker(f):
-            decorators.append(_di_inject)
-        if timeout is not None:
-            decorators.append(_timeout_decorator(timeout, node_name))
+        dependency_names = tuple(
+            param.name
+            for param in parameters
+            if _is_di_marker(param.default)
+            or _annotation_has_di_marker(param.annotation)
+        )
 
-        decorated_func = functools.reduce(lambda func, deco: deco(func), decorators, f)
+        decorated_func = _custom_validate_call(
+            validate_return=True,
+            config=ConfigDict(arbitrary_types_allowed=True),
+            node_name=node_name,
+            dependency_names=dependency_names,
+        )(f)
+        if config is not None:
+            decorated_func = retry_decorator(config=config, node_name=node_name)(
+                decorated_func
+            )
+        if dependency_names:
+            # DI inspects the signature without evaluating postponed annotations.
+            cast(Any, decorated_func).__signature__ = signature.replace(
+                parameters=parameters
+            )
+            decorated_func = _di_inject(decorated_func)
+        if timeout is not None:
+            decorated_func = _timeout_decorator(timeout, node_name)(decorated_func)
         node_obj = Node(func=decorated_func, name=node_name, is_async=is_original_async)
         functools.update_wrapper(node_obj, f, updated=())
         node_obj.__annotations__ = inspect.get_annotations(f, eval_str=False)

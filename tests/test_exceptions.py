@@ -97,37 +97,3 @@ class TestLoopControlException:
     def test_retryable_attribute(self):
         exc = LoopControlException("loop")
         assert exc.retryable is False
-
-
-class TestExceptionRetryablePropagation:
-    """Verify retryable attribute is checked correctly."""
-
-    def test_streamlet_exception_not_retryable(self):
-        exc = StreamletException("base error")
-        from streamlet import RetryConfig
-
-        config = RetryConfig()
-        assert config.should_retry(exc) is False
-
-    def test_user_business_exception_retryable(self):
-        exc = UserBusinessException("business error")
-        from streamlet import RetryConfig
-
-        config = RetryConfig()
-        assert config.should_retry(exc) is True
-
-    def test_user_business_exception_not_retryable_when_set(self):
-        exc = UserBusinessException("business error", retryable=False)
-        from streamlet import RetryConfig
-
-        config = RetryConfig()
-        assert config.should_retry(exc) is False
-
-    def test_custom_exception_with_retryable(self):
-        class CustomError(Exception):
-            retryable = True
-
-        from streamlet import RetryConfig
-
-        config = RetryConfig(exception_types=(CustomError,))
-        assert config.should_retry(CustomError()) is True

@@ -41,7 +41,7 @@ pytest 默认参数已包含 `-v --tb=short`。
 |------|------|
 | `__init__.py` | 公共 API 重导出，维护 `__all__`（19 个公开符号） |
 | `node.py` | `Node` 类、fluent 方法、`@node` 装饰器 |
-| `graph.py` | 内部组合类：`Pipeline`、`Parallel`、`Conditional`、`Repeat`、`FanIn` |
+| `graph.py` | 内部组合类：`Pipeline`、`Parallel`、`Conditional`、`Repeat`；fan-in 复用 Pipeline |
 | `executor.py` | `SyncExecutor`、`AsyncExecutor`、`ParallelResult`、`FanOutArgs` |
 | `context.py` | `BaseFlowContext` DI 容器、`ContextVarProvider`、`custom_validate_call` |
 | `retry.py` | `RetryConfig`、`retry_decorator`、指数退避重试 |
@@ -80,7 +80,7 @@ exceptions.py
 
 ### 核心设计模式
 
-- **组合优于继承**: `Node._func` 持有 Graph 内部类实例，用户永远看不见 Pipeline/Parallel 等
+- **组合优于继承**: `Node._func` 持有 Graph 内部类实例；Pipeline 迭代遍历顺序链，fan-in 复用相同执行路径
 - **双重执行**: `SyncExecutor`（ThreadPoolExecutor 扇出）+ `AsyncExecutor`（asyncio.gather 扇出），`Parallel` 通过 `"thread"` / `"async"` / `"auto"` 选择策略
 - **ContextVar 状态隔离**: fan-out 时 `capture_context()` 快照 → 每个 worker 线程/协程 `apply_context()` 恢复浅拷贝，分支间互不污染
 - **异常驱动的重试门控**: 异常类通过 `retryable` 类属性声明可重试性，`RetryConfig.should_retry()` 据此决定是否重试
@@ -99,6 +99,7 @@ exceptions.py
 - `RetryConfig.should_retry()` 优先尊重异常对象或异常类上的 `retryable` 属性
 - `@node` 装饰器顺序：校验 → 可选重试 → 按需依赖注入
 - Pydantic 输入验证和返回值验证分别抛 `ValidationInputException` 与 `ValidationOutputException`
+- DI 标记参数保留对象身份，不做 Pydantic 转换；其余业务参数照常校验
 
 ### 关键代码路径
 
@@ -107,7 +108,7 @@ exceptions.py
 | `node_func(x)` | `@node` 装饰器包裹层 → `Node.__call__` → `Node._execute` |
 | `.then(right)` | 创建 `Pipeline(left=当前, right)` 包装为 `Node` |
 | `.fan_out_to(targets)` | 创建 `Parallel(source=当前, targets)` → `SyncExecutor.gather` 或 `AsyncExecutor.agather` |
-| `.fan_in()` / `.fan_out_in()` | `FanIn` 聚合并行 → 传入下游 |
+| `.fan_in()` / `.fan_out_in()` | `Pipeline` 将并行结果原样交给聚合器 → 传入下游 |
 | fan-out 上下文隔离 | `capture_context()` → 每个 worker `apply_context(snapshot)` → 执行 → 返回 `ParallelResult` |
 | `branch_on({k: node})` | `Conditional` 执行 condition → 用返回值查 `branches` dict → 执行选中分支 |
 

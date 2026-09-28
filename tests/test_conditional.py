@@ -11,6 +11,24 @@ from streamlet import BaseFlowContext, node
 
 
 class TestBranchOnBoolean:
+    def test_built_flow_owns_branches(self):
+        @node
+        def condition() -> None:
+            return None
+
+        @node
+        def original() -> str:
+            return "original"
+
+        @node
+        async def replacement() -> str:
+            return "replacement"
+
+        branches = {None: original}
+        flow = condition.branch_on(branches)
+        branches[None] = replacement
+        assert flow() == "original"
+
     @pytest.fixture(autouse=True)
     def setup(self):
         self.container = BaseFlowContext()

@@ -169,24 +169,51 @@ def _create_input_validator_func(
         return sig.bind(*args, **kwargs)
 
     cast(Any, validate_input_only).__signature__ = sig
+    validate_input_only.__annotations__ = {
+        param.name: param.annotation
+        for param in sig.parameters.values()
+        if param.annotation is not inspect.Signature.empty
+    }
     return validate_input_only
+
+
+def _reject_sync_awaitable(result: Any, node_name: str) -> None:
+    if not inspect.isawaitable(result):
+        return
+    if inspect.iscoroutine(result):
+        result.close()
+    raise TypeError(
+        f"sync node '{node_name}' returned an awaitable; "
+        "define the node function with 'async def' instead"
+    )
 
 
 def _custom_validate_call(
     validate_return: bool = True,
     config: ConfigDict | None = None,
     node_name: str | None = None,
+    dependency_names: tuple[str, ...] = (),
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """内部 validate_call 包装器，区分输入/输出验证异常。"""
 
     def decorator(func: Callable) -> Callable:
         sig = inspect.signature(func)
         validation_config = config or ConfigDict(arbitrary_types_allowed=True)
+        # Dependencies are live objects owned by the DI container, not input payloads.
+        # Pydantic's dict/list coercion would copy state and break its lifetime.
+        input_sig = sig.replace(
+            parameters=[
+                param.replace(annotation=Any)
+                if param.name in dependency_names
+                else param
+                for param in sig.parameters.values()
+            ]
+        )
 
         input_validator = validate_call(
             validate_return=False,
             config=validation_config,
-        )(_create_input_validator_func(func, sig))
+        )(_create_input_validator_func(func, input_sig))
 
         return_type_adapter = None
         if validate_return and sig.return_annotation != inspect.Signature.empty:
@@ -242,6 +269,7 @@ def _custom_validate_call(
                 except ValidationError as e:
                     raise create_input_exception(e) from e
                 result = func(*bound_args.args, **bound_args.kwargs)
+                _reject_sync_awaitable(result, func_name)
                 return validate_result(result)
 
             return sync_wrapper

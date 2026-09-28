@@ -4,6 +4,7 @@ import asyncio
 import functools
 import inspect
 import logging
+import math
 import time
 from collections.abc import Callable
 from typing import Any
@@ -42,8 +43,8 @@ def _validate_retry_count(retry_count: int) -> None:
 def _validate_non_negative_number(name: str, value: float) -> None:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise TypeError(f"{name} must be a number, got {type(value).__name__}")
-    if value < 0:
-        raise ValueError(f"{name} must be >= 0, got {value}")
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"{name} must be finite and >= 0, got {value}")
 
 
 class RetryConfig:
@@ -74,7 +75,12 @@ class RetryConfig:
         return isinstance(exception, self.exception_types)
 
     def get_delay(self, attempt: int) -> float:
-        delay = self.retry_delay * (self.backoff_factor**attempt)
+        if self.retry_delay == 0:
+            return 0.0
+        try:
+            delay = self.retry_delay * (self.backoff_factor**attempt)
+        except OverflowError:
+            return self.max_delay
         return min(delay, self.max_delay)
 
 

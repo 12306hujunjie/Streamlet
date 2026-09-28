@@ -1,4 +1,4 @@
-"""Executor 协议与实现——纯执行策略。
+"""执行器——纯执行策略。
 
 SyncExecutor: 同步执行，gather 使用 ThreadPoolExecutor
 AsyncExecutor: 异步执行，gather 使用 asyncio.gather
@@ -11,7 +11,7 @@ import traceback
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import Any
 
 from .context import apply_context, capture_context
 
@@ -66,18 +66,6 @@ def _unique_key(base_name: str, existing: dict) -> str:
     while f"{base_name}[{counter}]" in existing:
         counter += 1
     return f"{base_name}[{counter}]"
-
-
-@runtime_checkable
-class Executor(Protocol):
-    """同步执行器协议。"""
-
-    def run(self, node: Any, *args: Any, **kwargs: Any) -> Any: ...
-    def gather(
-        self,
-        tasks: list[ParallelTask],
-        key_func: Callable[[Any], str] | None = None,
-    ) -> dict[str, "ParallelResult"]: ...
 
 
 class SyncExecutor:
@@ -198,46 +186,20 @@ class AsyncExecutor:
             node: Any, args: tuple[Any, ...], kwargs: dict[str, Any]
         ) -> tuple[str, ParallelResult]:
             # fan-out 分支隔离：为每个 asyncio task 注入独立的 context 快照
-            apply_context(parent_ctx_snapshot)
             base = key_func(node) if key_func else node.name
             if offload_sync and not node._is_async:
-                return await asyncio.to_thread(
-                    _execute_sync_one,
+                result = await asyncio.to_thread(
+                    SyncExecutor()._run_isolated,
                     node,
                     args,
                     kwargs,
                     parent_ctx_snapshot,
-                    base,
                 )
+                return base, result
+            apply_context(parent_ctx_snapshot)
             start = time.perf_counter()
             try:
                 result = await node._execute_async(*args, **kwargs)
-                return base, ParallelResult(
-                    node_name=node.name,
-                    success=True,
-                    result=result,
-                    execution_time=time.perf_counter() - start,
-                )
-            except Exception as e:
-                return base, ParallelResult(
-                    node_name=node.name,
-                    success=False,
-                    error=str(e),
-                    error_traceback=traceback.format_exc(),
-                    execution_time=time.perf_counter() - start,
-                )
-
-        def _execute_sync_one(
-            node: Any,
-            args: tuple[Any, ...],
-            kwargs: dict[str, Any],
-            snapshot: dict[int, Any],
-            base: str,
-        ) -> tuple[str, ParallelResult]:
-            apply_context(snapshot)
-            start = time.perf_counter()
-            try:
-                result = node._execute(*args, **kwargs)
                 return base, ParallelResult(
                     node_name=node.name,
                     success=True,

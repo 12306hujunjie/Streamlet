@@ -1,10 +1,11 @@
 """显式执行图——内部实现细节，不对外暴露。
 
-5 个内部类对应 5 种组合模式，用户通过 Node fluent 接口间接使用。
+4 个内部类表达组合模式；fan-in 复用顺序组合，用户通过 Node fluent 接口使用。
 """
 
 import asyncio
 import logging
+from collections.abc import Iterator
 from typing import Any
 
 from .exceptions import LoopControlException
@@ -45,13 +46,30 @@ class Pipeline:
 
     def _sync_run(self, *args: Any, **kwargs: Any) -> Any:
         ex = SyncExecutor()
-        mid = ex.run(self.left, *args, **kwargs)
-        return ex.run(self.right, mid)
+        steps = self._steps()
+        result = ex.run(next(steps), *args, **kwargs)
+        for step in steps:
+            result = ex.run(step, result)
+        return result
 
     async def _async_run(self, *args: Any, **kwargs: Any) -> Any:
         ex = AsyncExecutor()
-        mid = await ex.arun(self.left, *args, **kwargs)
-        return await ex.arun(self.right, mid)
+        steps = self._steps()
+        result = await ex.arun(next(steps), *args, **kwargs)
+        for step in steps:
+            result = await ex.arun(step, result)
+        return result
+
+    def _steps(self) -> Iterator[Any]:
+        """按数据流顺序遍历嵌套 Pipeline，避免长链耗尽 Python 调用栈。"""
+        pending = [self.right, self.left]
+        while pending:
+            step = pending.pop()
+            graph = getattr(step, "_func", None)
+            if isinstance(graph, Pipeline):
+                pending.extend((graph.right, graph.left))
+            else:
+                yield step
 
 
 class Parallel:
@@ -71,7 +89,7 @@ class Parallel:
         max_workers: int | None = None,
     ) -> None:
         self.source = source
-        self.targets = targets
+        self.targets = list(targets)
         self.executor_type = executor_type
         self.max_workers = max_workers
         self._is_async = source._is_async or any(t._is_async for t in targets)
@@ -118,7 +136,7 @@ class Conditional:
 
     def __init__(self, condition_node: Any, branches: dict[Any, Any]) -> None:
         self.condition_node = condition_node
-        self.branches = branches
+        self.branches = dict(branches)
         self._is_async = condition_node._is_async or any(
             b._is_async for b in branches.values()
         )
@@ -251,28 +269,3 @@ class Repeat:
                     e,
                 )
         return last_result
-
-
-class FanIn:
-    """聚合：接收上游 Node 的结果 → aggregator"""
-
-    def __init__(self, upstream: Any, aggregator: Any) -> None:
-        self.upstream = upstream
-        self.aggregator = aggregator
-        self._is_async = upstream._is_async or aggregator._is_async
-
-    def __call__(self, *args: Any, **kwargs: Any) -> Any:
-        if self._is_async:
-            return self._async_run(*args, **kwargs)
-        else:
-            return self._sync_run(*args, **kwargs)
-
-    def _sync_run(self, *args: Any, **kwargs: Any) -> Any:
-        ex = SyncExecutor()
-        upstream_result = ex.run(self.upstream, *args, **kwargs)
-        return ex.run(self.aggregator, upstream_result)
-
-    async def _async_run(self, *args: Any, **kwargs: Any) -> Any:
-        ex = AsyncExecutor()
-        upstream_result = await ex.arun(self.upstream, *args, **kwargs)
-        return await ex.arun(self.aggregator, upstream_result)

@@ -7,6 +7,15 @@ from tests.conftest import add_ten, async_add_ten, async_double, double, to_stri
 
 
 class TestThenBasic:
+    @pytest.mark.parametrize("async_step", [False, True])
+    def test_long_nested_chain_preserves_order_without_recursion(self, async_step):
+        step = async_add_ten if async_step else add_ten
+        flow = step
+        for _ in range(1100):
+            flow = flow.then(step)
+        # Nest another chain on the right as well as the accumulated left chain.
+        assert flow.then(double.then(to_string))(0) == "result:22020"
+
     def test_two_node_chain(self):
         flow = double.then(add_ten)
         result = flow(5)

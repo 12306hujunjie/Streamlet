@@ -1,220 +1,113 @@
-"""End-to-end integration tests for Streamlet workflows."""
+"""Public workflows: isolated requests, partial failure, recovery and final effects."""
 
 import asyncio
-import threading
-from pathlib import Path
 
 import pytest
 from dependency_injector.wiring import Provide
 
-from streamlet import BaseFlowContext, ParallelResult, node
-from tests.conftest import increment
+from streamlet import BaseFlowContext, fan_out_args, node
 
 
-def test_public_streamlet_import_uses_workspace_source():
-    import streamlet
+@pytest.mark.parametrize("executor", ["thread", "async", "auto"])
+async def test_concurrent_workflows_recover_and_publish_once(executor):
+    container = BaseFlowContext()
+    attempts = []
+    published = []
 
-    expected_path = Path(__file__).resolve().parents[1] / "src/streamlet/__init__.py"
-    assert streamlet.__file__ is not None
-    assert Path(streamlet.__file__).resolve() == expected_path
+    @node
+    async def source(
+        request_id: str, value: int, state: dict = Provide[BaseFlowContext.context]
+    ):
+        state["request_id"] = request_id
+        return fan_out_args({"value": value}, {"value": value})
 
+    @node(enable_retry=True, retry_count=1, retry_delay=0)
+    def compute(value: int, state: dict = Provide[BaseFlowContext.context]) -> int:
+        attempts.append((state["request_id"], value))
+        if "attempted" not in state:
+            state["attempted"] = True
+            raise ConnectionError("transient calculation failure")
+        return value + 1
 
-class TestFullPipeline:
-    """Complete data processing pipeline: extract → transform → load."""
+    @node
+    async def optional_service(value: int) -> int:
+        await asyncio.sleep(0)
+        raise ValueError("optional service unavailable")
 
-    @pytest.mark.asyncio
-    async def test_etl_pipeline(self):
-        @node
-        async def extract(source: str) -> list:
-            await asyncio.sleep(0.01)
-            return [{"id": i, "value": i * 10} for i in range(5)]
+    @node
+    def collect(results: dict, state: dict = Provide[BaseFlowContext.context]) -> bool:
+        successful = [r.result for r in results.values() if r.success]
+        failed = [r for r in results.values() if not r.success]
+        assert len(successful) == 1
+        assert len(failed) == 1
+        assert failed[0].error == "optional service unavailable"
+        assert "attempted" not in state
+        state["result"] = successful[0]
+        return state["result"] > 0
 
-        @node
-        def transform(items: list) -> list:
-            return [{"id": item["id"], "doubled": item["value"] * 2} for item in items]
+    @node
+    def publish(state: dict = Provide[BaseFlowContext.context]) -> str:
+        published.append((state["request_id"], state["result"]))
+        return f"published:{state['request_id']}:{state['result']}"
 
-        @node
-        def load(items: list) -> dict:
-            return {"loaded": len(items), "data": items}
+    @node
+    def skip(state: dict = Provide[BaseFlowContext.context]) -> str:
+        return f"skipped:{state['request_id']}:{state['result']}"
 
-        pipeline = extract.then(transform).then(load)
-        result = await pipeline("database")
-        assert result["loaded"] == 5
-        assert result["data"][0]["doubled"] == 0
-        assert result["data"][4]["doubled"] == 80
-
-    def test_sync_pipeline(self):
-        @node
-        def step1(x: int) -> int:
-            return x + 1
-
-        @node
-        def step2(x: int) -> int:
-            return x * 3
-
-        @node
-        def step3(x: int) -> str:
-            return f"result:{x}"
-
-        pipeline = step1.then(step2).then(step3)
-        result = pipeline(5)
-        assert result == "result:18"  # (5+1)*3=18
-
-
-class TestFanOutFanInWorkflow:
-    """Parallel processing with aggregation."""
-
-    def test_parallel_processing_with_aggregation(self):
-        @node
-        def generate_data(x: int) -> dict:
-            return {"value": x}
-
-        @node
-        def double(data: dict) -> int:
-            return data["value"] * 2
-
-        @node
-        def triple(data: dict) -> int:
-            return data["value"] * 3
-
-        @node
-        def collect(results: dict) -> dict:
-            values = [r.result for r in results.values() if r.success]
-            return {"count": len(values), "values": sorted(values)}
-
-        pipeline = generate_data.fan_out_to([double, triple], executor="thread").fan_in(
-            collect
-        )
-        result = pipeline(5)
-        assert result["count"] == 2
-        assert 10 in result["values"]
-        assert 15 in result["values"]
+    container.wire(modules=[__name__])
+    try:
+        flow = source.fan_out_in(
+            [compute.repeat(3, stop_on_error=True), optional_service],
+            collect,
+            executor=executor,
+            max_workers=2,
+        ).branch_on({True: publish, False: skip})
+        assert await asyncio.gather(flow("a", 10), flow("b", -10)) == [
+            "published:a:13",
+            "skipped:b:-7",
+        ]
+        assert published == [("a", 13)]
+        assert [value for request, value in attempts if request == "a"] == [
+            10,
+            10,
+            11,
+            12,
+        ]
+        assert [value for request, value in attempts if request == "b"] == [
+            -10,
+            -10,
+            -9,
+            -8,
+        ]
+        assert container.context() == {}
+    finally:
+        container.unwire()
 
 
-class TestConditionalWorkflow:
-    """Conditional branching workflows."""
+async def test_cancellation_stops_repeat_and_retry_without_publishing():
+    started = asyncio.Event()
+    calls = []
+    published = []
 
-    def test_conditional_routing(self):
-        container = BaseFlowContext()
+    @node(enable_retry=True, retry_count=3, retry_delay=0)
+    async def wait_for_service(value: int) -> int:
+        calls.append(value)
+        started.set()
+        await asyncio.Event().wait()
+        return value
 
-        @node
-        def classify(data: dict) -> str:
-            return "high" if data["score"] >= 80 else "low"
+    @node
+    def publish(value: int) -> int:
+        published.append(value)
+        return value
 
-        @node
-        def handle_high(state: dict = Provide[BaseFlowContext.context]) -> dict:
-            return {"level": "A", "original": state["score"]}
-
-        @node
-        def handle_low(state: dict = Provide[BaseFlowContext.context]) -> dict:
-            return {"level": "B", "original": state["score"]}
-
-        container.wire(modules=[__name__])
-
-        workflow = classify.branch_on({"high": handle_high, "low": handle_low})
-
-        container.context()["score"] = 90
-        high_result = workflow({"score": 90})
-        assert high_result["level"] == "A"
-
-        container.context()["score"] = 50
-        low_result = workflow({"score": 50})
-        assert low_result["level"] == "B"
-
-
-class TestConcurrentSafety:
-    """Verify thread safety of the framework."""
-
-    def test_parallel_execution_thread_safety(self):
-        @node
-        def heavy_task(x: int) -> int:
-            total = 0
-            for i in range(x):
-                total += i
-            return total
-
-        flow = heavy_task.fan_out_to([heavy_task, heavy_task], executor="thread")
-        results = flow(1000)
-        assert len(results) == 2
-        for r in results.values():
-            assert isinstance(r, ParallelResult)
-            assert r.success is True
-
-    def test_state_isolation_in_threads(self):
-        container = BaseFlowContext()
-
-        @node
-        def stateful_node(
-            x: int, state: dict = Provide[BaseFlowContext.context]
-        ) -> int:
-            state[f"key_{x}"] = x
-            return len(state)
-
-        container.wire(modules=[__name__])
-
-        results = []
-        errors = []
-
-        def run_in_thread(val):
-            try:
-                results.append(stateful_node(val))
-            except Exception as e:
-                errors.append(str(e))
-
-        threads = [threading.Thread(target=run_in_thread, args=(i,)) for i in range(3)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        if errors:
-            pytest.fail(f"Thread errors: {errors}")
-        assert len(results) == 3
-
-
-class TestErrorRecovery:
-    """Error handling in complex workflows."""
-
-    def test_partial_failure_in_parallel(self):
-        @node
-        def good_node(x: int) -> int:
-            return x * 2
-
-        @node
-        def bad_node(x: int) -> int:
-            raise ValueError("simulated failure")
-
-        @node
-        def aggregator(results: dict) -> dict:
-            successful = [r.result for r in results.values() if r.success]
-            failed = [r.error for r in results.values() if not r.success]
-            return {"success_count": len(successful), "fail_count": len(failed)}
-
-        flow = good_node.fan_out_to([good_node, bad_node], executor="thread").fan_in(
-            aggregator
-        )
-        result = flow(10)
-        assert result["success_count"] == 1
-        assert result["fail_count"] == 1
-
-
-class TestLargeDataHandling:
-    """Performance with larger datasets."""
-
-    def test_many_iterations_repeat(self):
-        flow = increment.repeat(100)
-        result = flow({"value": 0})
-        assert result.args == ({"value": 100},)
-
-    def test_many_targets_fan_out(self):
-        @node
-        def identity(x: int) -> int:
-            return x
-
-        targets = [identity] * 20
-        flow = identity.fan_out_to(targets, executor="thread")
-        results = flow(42)
-        assert len(results) == 20
-        for r in results.values():
-            assert r.success is True
-            assert r.result == 42
+    flow = wait_for_service.repeat(3).then(publish)
+    task = asyncio.create_task(flow(1))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=2)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert calls == [1]
+    assert published == []

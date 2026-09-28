@@ -8,6 +8,10 @@
 
 **声明式数据流处理框架：用方法链表达业务逻辑，框架自动处理异步/同步混合执行、并行调度和重试。**
 
+适合把已有 Python 函数组合成进程内的数据处理、服务聚合或工具调用流程。
+普通数据通过返回值传递；共享依赖通过 DI 提供；并行失败由聚合节点显式处理。
+对写库、发消息等外部操作，建议在聚合与校验之后调用独立节点，并由业务保证幂等。
+
 - 🎯 **声明式工作流**：`.then()` `.fan_out_to()` `.fan_in()` `.branch_on()` `.repeat()` 方法链构建数据流
 - 🤖 **智能异步执行**：自动检测 async/sync 函数并选择正确的执行策略，无需手动协调
 - 🔗 **@node 装饰器**：任意函数变为可组合节点，内置 pydantic 类型校验和依赖注入
@@ -106,6 +110,9 @@ assert fetch_calls == [("orders", 2)] * 3
 `ValidationInputException` 或 `ValidationOutputException`。更多细节见
 [API 参考](docs/API参考.md#node-装饰器) 和
 [Pydantic TypeAdapter](https://docs.pydantic.dev/latest/concepts/type_adapter/)。
+
+标记为 `Provide[...]` / `Provider[...]` 的依赖参数保留对象身份，不参与业务输入的
+Pydantic 转换；因此注入的状态字典可以在同一执行上下文的节点之间持续读写。
 
 ## 示例
 

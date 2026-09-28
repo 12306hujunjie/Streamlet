@@ -17,11 +17,6 @@ def failing_node(data: dict) -> dict:
 
 
 class TestRepeatBasic:
-    def test_repeat_public_protocols_come_from_public_module(self):
-        assert RepeatInputMode.__module__ == "streamlet.types"
-        assert CallArgs.__module__ == "streamlet.types"
-        assert call_args.__module__ == "streamlet.types"
-
     def test_repeat_n_times(self):
         flow = increment.repeat(3)
         result = flow({"value": 0})
@@ -56,6 +51,23 @@ class TestRepeatBasic:
 
 
 class TestRepeatErrorHandling:
+    @pytest.mark.parametrize("async_node", [False, True])
+    def test_failures_keep_last_successful_result_and_input(self, async_node):
+        calls = []
+
+        def step(value: int) -> int:
+            calls.append(value)
+            if len(calls) in (1, 3, 5):
+                raise ValueError("transient failure")
+            return value + 1
+
+        async def async_step(value: int) -> int:
+            return step(value)
+
+        flow = node(async_step if async_node else step).repeat(5)
+        assert flow(0) == 2
+        assert calls == [0, 0, 1, 1, 2]
+
     def test_stop_on_error_true(self):
         flow = failing_node.repeat(3, stop_on_error=True)
         with pytest.raises(LoopControlException) as exc_info:

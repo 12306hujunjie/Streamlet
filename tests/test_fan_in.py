@@ -64,6 +64,36 @@ class TestFanInBasic:
 
 
 class TestFanInEdgeCases:
+    @pytest.mark.parametrize("async_aggregator", [False, True])
+    @pytest.mark.parametrize("failure_stage", ["source", "aggregator"])
+    def test_failure_aborts_downstream(self, async_aggregator, failure_stage):
+        error = ValueError(f"{failure_stage} failed")
+        calls = []
+
+        @node
+        def source(value: int) -> int:
+            if failure_stage == "source":
+                raise error
+            return value
+
+        def collect(value: int) -> int:
+            calls.append("aggregator")
+            raise error
+
+        async def async_collect(value: int) -> int:
+            return collect(value)
+
+        @node
+        def downstream(value: int) -> int:
+            calls.append("downstream")
+            return value
+
+        aggregator = node(async_collect if async_aggregator else collect)
+        with pytest.raises(ValueError) as exc_info:
+            source.fan_in(aggregator).then(downstream)(1)
+        assert exc_info.value is error
+        assert calls == ([] if failure_stage == "source" else ["aggregator"])
+
     def test_single_target_aggregation(self):
         flow = source_data.fan_out_to([multiply], executor="thread").fan_in(
             aggregate_sum

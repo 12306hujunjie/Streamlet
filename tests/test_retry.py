@@ -15,6 +15,17 @@ from streamlet import (
 
 
 class TestRetryConfig:
+    @pytest.mark.parametrize("field", ["retry_delay", "backoff_factor", "max_delay"])
+    @pytest.mark.parametrize("value", [float("nan"), float("inf")])
+    def test_non_finite_configuration_is_rejected(self, field, value):
+        with pytest.raises(ValueError, match=field):
+            RetryConfig(**{field: value})
+
+    @pytest.mark.parametrize("delay, expected", [(1.0, 5.0), (0.0, 0.0)])
+    def test_backoff_cap_prevents_overflow(self, delay, expected):
+        config = RetryConfig(retry_delay=delay, backoff_factor=2.0, max_delay=5.0)
+        assert config.get_delay(1024) == expected
+
     def test_default_values(self):
         config = RetryConfig()
         assert config.retry_count == 3

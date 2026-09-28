@@ -3,8 +3,11 @@
 import asyncio
 import inspect
 import pickle
+import sys
 import time
+import types
 import warnings
+from contextvars import ContextVar
 from typing import Annotated
 
 import pytest
@@ -15,6 +18,7 @@ from streamlet import (
     ContextVarProvider,
     Node,
     NodeTimeoutException,
+    ValidationInputException,
     node,
 )
 
@@ -100,6 +104,20 @@ class TestNodeDecoratorCallModes:
 
 
 class TestNodeDecoratorAsync:
+    def test_sync_awaitable_is_closed_before_return_validation(self):
+        pending = _resolve_value(5)
+
+        @node
+        def wrong() -> int:
+            return pending
+
+        try:
+            with pytest.raises(TypeError, match="returned an awaitable"):
+                wrong()
+            assert inspect.getcoroutinestate(pending) == inspect.CORO_CLOSED
+        finally:
+            pending.close()
+
     def test_sync_node_returning_coroutine_is_rejected_from_sync_entrypoints(self):
         @node
         def func(x: int):
@@ -156,6 +174,37 @@ class TestNodeDecoratorAsync:
 
 
 class TestNodeDecoratorTimeout:
+    @pytest.mark.parametrize("async_node", [False, True])
+    def test_business_timeout_is_not_reclassified(self, async_node):
+        error = TimeoutError("upstream timeout")
+
+        def sync_fail() -> None:
+            raise error
+
+        async def async_fail() -> None:
+            raise error
+
+        func = node(async_fail if async_node else sync_fail, timeout=1)
+        with pytest.raises(TimeoutError) as exc_info:
+            func()
+        assert exc_info.value is error
+
+    def test_sync_timeout_preserves_request_context_without_writeback(self):
+        request_id = ContextVar("request_id", default="missing")
+        token = request_id.set("request-1")
+
+        @node(timeout=1)
+        def read_request_id() -> str:
+            value = request_id.get()
+            request_id.set("worker")
+            return value
+
+        try:
+            assert read_request_id() == "request-1"
+            assert request_id.get() == "request-1"
+        finally:
+            request_id.reset(token)
+
     def test_sync_node_timeout_raises_and_stops_execution(self):
         events: list[str] = []
 
@@ -215,9 +264,10 @@ class TestNodeDecoratorTimeout:
         assert exc_info.value.node_name == "slow_async"
         assert exc_info.value.timeout_seconds == 0.01
 
-    def test_invalid_timeout_raises(self):
+    @pytest.mark.parametrize("timeout", [0, -1, float("nan"), float("inf")])
+    def test_invalid_timeout_raises(self, timeout):
         with pytest.raises(ValueError, match="timeout"):
-            node(timeout=0)
+            node(timeout=timeout)
 
     @pytest.mark.asyncio
     async def test_timeout_is_total_budget_for_retrying_node(self):
@@ -245,6 +295,66 @@ class TestNodeDecoratorTimeout:
 
 
 class TestNodeDecoratorWithDI:
+    @pytest.mark.parametrize("async_node", [False, True])
+    def test_dependencies_keep_identity_while_business_inputs_are_validated(
+        self, async_node
+    ):
+        container = BaseFlowContext()
+        original = container.context()
+
+        def write(value: int, state: dict = Provide[BaseFlowContext.context]) -> int:
+            assert state is original
+            state["value"] = value
+            return value
+
+        async def async_write(
+            value: int, state: dict = Provide[BaseFlowContext.context]
+        ) -> int:
+            return write(value, state)
+
+        writer = node(async_write if async_node else write)
+
+        @node
+        def read(value: int, state: dict = Provide[BaseFlowContext.context]) -> int:
+            assert state is original
+            assert state["value"] == value
+            return state["value"]
+
+        container.wire(modules=[__name__])
+        try:
+            flow = writer.then(read)
+            assert flow("12") == 12
+            assert original == {"value": 12}
+            with pytest.raises(ValidationInputException):
+                flow("invalid")
+            assert original == {"value": 12}
+        finally:
+            container.unwire()
+
+    def test_postponed_annotated_dependency_injection(self):
+        module = types.ModuleType("streamlet_future_di_test")
+        sys.modules[module.__name__] = module
+        try:
+            exec(
+                """from __future__ import annotations
+from typing import Annotated
+from dependency_injector.wiring import Provide
+from streamlet import BaseFlowContext, node
+container = BaseFlowContext()
+@node
+def read(state: Annotated[dict, Provide[BaseFlowContext.context]]) -> str:
+    return state['key']
+container.context()['key'] = 'value'
+""",
+                module.__dict__,
+            )
+            module.container.wire(modules=[module])
+            assert module.read() == "value"
+        finally:
+            if hasattr(module, "container"):
+                module.container.unwire()
+            sys.modules.pop(module.__name__, None)
+
     def test_node_with_dependency_injection(self):
         container = BaseFlowContext()
         container.context()["key"] = "di_value"
@@ -276,33 +386,6 @@ class TestNodeDecoratorWithDI:
 
 
 class TestNodeDecoratorTypeValidation:
-    def test_valid_type_passes(self):
-        @node
-        def double(x: int) -> int:
-            return x * 2
-
-        assert double(5) == 10
-
-    def test_invalid_type_raises(self):
-        from streamlet import ValidationInputException
-
-        @node
-        def double(x: int) -> int:
-            return x * 2
-
-        with pytest.raises(ValidationInputException):
-            double("not_int")
-
-    def test_invalid_return_type_raises(self):
-        from streamlet import ValidationOutputException
-
-        @node
-        def bad_return(x: int) -> str:
-            return 42  # returns int, annotated as str
-
-        with pytest.raises(ValidationOutputException):
-            bad_return(5)
-
     def test_custom_return_type_passes(self):
         class PlainResult:
             def __init__(self, value: int) -> None:

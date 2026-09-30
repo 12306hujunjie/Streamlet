@@ -10,6 +10,29 @@ from dependency_injector.wiring import Provide
 from streamlet import BaseFlowContext, node
 
 
+@pytest.mark.parametrize("async_branch", [False, True])
+def test_built_flow_owns_branches(async_branch):
+    @node
+    def condition() -> None:
+        return None
+
+    @node
+    def sync_branch() -> str:
+        return "sync"
+
+    @node
+    async def async_branch_node() -> str:
+        return "async"
+
+    original = async_branch_node if async_branch else sync_branch
+    replacement = sync_branch if async_branch else async_branch_node
+    branches = {None: original}
+    flow = condition.branch_on(branches)
+    branches[None] = replacement
+
+    assert flow() == ("async" if async_branch else "sync")
+
+
 class TestBranchOnBoolean:
     @pytest.fixture(autouse=True)
     def setup(self):

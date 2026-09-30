@@ -71,7 +71,7 @@ class Parallel:
         max_workers: int | None = None,
     ) -> None:
         self.source = source
-        self.targets = targets
+        self.targets = list(targets)
         self.executor_type = executor_type
         self.max_workers = max_workers
         self._is_async = source._is_async or any(t._is_async for t in targets)
@@ -118,7 +118,7 @@ class Conditional:
 
     def __init__(self, condition_node: Any, branches: dict[Any, Any]) -> None:
         self.condition_node = condition_node
-        self.branches = branches
+        self.branches = dict(branches)
         self._is_async = condition_node._is_async or any(
             b._is_async for b in branches.values()
         )

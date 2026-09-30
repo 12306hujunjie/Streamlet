@@ -21,6 +21,21 @@ def failing_target(data: dict) -> int:
 
 
 class TestFanOutBasic:
+    @pytest.mark.parametrize("executor", ["thread", "async", "auto"])
+    @pytest.mark.parametrize("async_target", [False, True])
+    def test_built_flow_owns_target_list(self, executor, async_target):
+        target = async_multiply if async_target else multiply
+        targets = [target, add_five]
+        flow = source_data.fan_out_to(targets, executor=executor)
+        targets.clear()
+
+        results = flow(10)
+        assert all(result.success for result in results.values())
+        assert {key: result.result for key, result in results.items()} == {
+            target.name: 30 if async_target else 20,
+            "add_five": 15,
+        }
+
     def test_two_targets_thread(self):
         flow = source_data.fan_out_to([multiply, add_five], executor="thread")
         results = flow(10)
